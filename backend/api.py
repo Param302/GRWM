@@ -145,11 +145,16 @@ async def run_agent(session_id: str, username: str, tone: str, style: str):
         # Create a thread-safe queue for communication between thread and async
         sync_queue = thread_queue.Queue()
 
+        def progress_callback(stage: str, message: str):
+            """Callback for agents to emit progress updates"""
+            sync_queue.put(('progress', stage, message))
+
         def run_graph_in_thread():
             """Run LangGraph in a separate thread and push events to queue"""
             try:
                 print(f"🔧 Thread started: Creating LangGraph...")
-                app_graph = create_detective_graph()
+                app_graph = create_detective_graph(
+                    progress_callback=progress_callback)
                 initial_state = create_initial_state(
                     username,
                     preferences={"tone": tone, "style": style}
@@ -198,6 +203,17 @@ async def run_agent(session_id: str, username: str, tone: str, style: str):
                     break
                 elif msg_type == 'error':
                     raise Exception(f"Graph error: {event_name}")
+                elif msg_type == 'progress':
+                    # Real-time progress from agents
+                    stage = event_name  # event_name is stage here
+                    message = state  # state is message here
+                    print(f"📝 Progress [{stage}]: {message}")
+                    await emit_event({
+                        "type": "progress",
+                        "stage": stage,
+                        "message": message,
+                        "timestamp": datetime.now().isoformat()
+                    })
                 elif msg_type == 'event':
                     print(f"📥 Received event from graph: {event_name}")
                     # Transform and emit immediately

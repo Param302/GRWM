@@ -441,7 +441,7 @@ class TechStackDetective:
     def __init__(self, client: GitHubAPIClient):
         self.client = client
 
-    def investigate_repos(self, username: str, repositories: List[Dict]) -> List[Dict]:
+    def investigate_repos(self, username: str, repositories: List[Dict], progress_callback=None) -> List[Dict]:
         """
         For each repository, fetch file tree and README content
         Detect tech stack from file patterns
@@ -449,14 +449,26 @@ class TechStackDetective:
         """
         enriched_repos = []
 
-        for repo in repositories:
-            print(f"  🔍 Investigating {repo['name']}...")
+        for idx, repo in enumerate(repositories, 1):
+            msg = f"🔍 Investigating {repo['name']}... ({idx}/{len(repositories)})"
+            print(f"  {msg}")
+            if progress_callback:
+                progress_callback("detective", msg)
 
             # Fetch repository file tree and README in one query
             repo_data = self._fetch_repo_details(username, repo["name"])
 
             # Detect tech stack from file patterns
             detected_tech = self._detect_tech_stack(repo_data["files"])
+
+            # Show detected tech if any
+            if detected_tech and progress_callback:
+                tech_list = ', '.join(detected_tech[:3])
+                if len(detected_tech) > 3:
+                    tech_list += f' +{len(detected_tech)-3} more'
+                tech_msg = f"  └─ {repo['name']}: {tech_list}"
+                if progress_callback:
+                    progress_callback("detective", tech_msg)
 
             # Add enriched data
             enriched = {

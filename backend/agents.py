@@ -97,13 +97,14 @@ class DetectiveAgent:
     Uses parallel execution for speed
     """
 
-    def __init__(self, github_token: str):
+    def __init__(self, github_token: str, progress_callback=None):
         self.client = GitHubAPIClient(github_token)
         self.profile_detective = ProfileDetective(self.client)
         self.repo_stalker = RepositoryStalker(self.client)
         self.ex_readme = ExReadme(self.client)
         self.tech_detective = TechStackDetective(self.client)
         self.llm = create_llm(temperature=0.3)  # Low temp for factual tasks
+        self.progress_callback = progress_callback
 
     async def investigate_parallel(self, username: str) -> Dict[str, Any]:
         """
@@ -114,13 +115,22 @@ class DetectiveAgent:
 
         try:
             # Step 1: Get profile (required first)
-            print("  ├─ 🕵️  Digging up the basics (legally, of course)...")
+            msg = "🕵️ Digging up the basics (legally, of course)..."
+            print(f"  ├─ {msg}")
+            if self.progress_callback:
+                self.progress_callback("detective", msg)
+
             profile = self.profile_detective.investigate(username)
-            print(
-                f"  │   Found: {profile['basic_info']['name'] or username} - {profile['stats']['followers']} followers (popular kid!)")
+            msg = f"Found: {profile['basic_info']['name'] or username} - {profile['stats']['followers']} followers (popular kid!)"
+            print(f"  │   {msg}")
+            if self.progress_callback:
+                self.progress_callback("detective", msg)
 
             # Step 2: Run other fetches in parallel
-            print("  ├─ 🚀 Going full speed ahead with parallel snooping...")
+            msg = "🚀 Going full speed ahead with parallel snooping..."
+            print(f"  ├─ {msg}")
+            if self.progress_callback:
+                self.progress_callback("detective", msg)
 
             # These can run simultaneously
             existing_readme_task = asyncio.to_thread(
@@ -140,22 +150,40 @@ class DetectiveAgent:
                 existing_readme_task,
                 enhanced_repos_task
             )
-            print(
-                f"  │   Gathered {len(enhanced_repos)} repos. Quality > Quantity (we hope).")
+            msg = f"Gathered {len(enhanced_repos)} repos. Quality > Quantity (we hope)."
+            print(f"  │   {msg}")
+            if self.progress_callback:
+                self.progress_callback("detective", msg)
 
-            print("  ├─ 🔬 CSI-level analysis of tech stacks...")
+            msg = "🔬 CSI-level analysis of tech stacks..."
+            print(f"  ├─ {msg}")
+            if self.progress_callback:
+                self.progress_callback("detective", msg)
+
+            # Show pinned repos first
+            pinned_repo_names = [repo['name']
+                                 for repo in profile["pinned_repos"]]
+            if pinned_repo_names:
+                msg = f"📌 Pinned repos: {', '.join(pinned_repo_names[:3])}{' +more' if len(pinned_repo_names) > 3 else ''}"
+                print(f"  │   {msg}")
+                if self.progress_callback:
+                    self.progress_callback("detective", msg)
+
             # Tech stack detection (needs enhanced_repos)
             enriched_repos = await asyncio.to_thread(
                 self.tech_detective.investigate_repos,
                 username,
-                enhanced_repos
+                enhanced_repos,
+                self.progress_callback  # Pass callback to show repo investigation
             )
 
             # Calculate social proof (can use enhanced_repos)
             social_proof = SocialProofCollector.collect(
                 enriched_repos, profile)
-            print(
-                f"  │   Total clout: {social_proof['total_stars']} ⭐ | Apparently people like this.")
+            msg = f"Total clout: {social_proof['total_stars']} ⭐ | Apparently people like this."
+            print(f"  │   {msg}")
+            if self.progress_callback:
+                self.progress_callback("detective", msg)
 
             if existing_readme:
                 print(
@@ -264,8 +292,9 @@ class CTOAgent:
     Uses deterministic calculations for consistency
     """
 
-    def __init__(self):
+    def __init__(self, progress_callback=None):
         self.llm = create_llm(temperature=0.3)  # Low temp for analytical tasks
+        self.progress_callback = progress_callback
 
     def analyze(self, raw_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -280,27 +309,45 @@ class CTOAgent:
         social_proof = raw_data["social_proof"]
 
         # 1. Language Analysis with Byte Dominance
-        print("  ├─ 📊 Crunching language stats (bytes don't lie)...")
+        msg = "📊 Crunching language stats (bytes don't lie)..."
+        print(f"  ├─ {msg}")
+        if self.progress_callback:
+            self.progress_callback("cto", msg)
         language_analysis = self._analyze_language_dominance(repositories)
 
         # 2. Skill Mapping (Libraries → Domains)
-        print("  ├─ 🎯 Mapping skills to actual domains (not just buzzwords)...")
+        msg = "🎯 Mapping skills to actual domains (not just buzzwords)..."
+        print(f"  ├─ {msg}")
+        if self.progress_callback:
+            self.progress_callback("cto", msg)
         skill_mapping = self._map_skills_to_domains(repositories)
 
         # 3. Grind Score Calculation (EXACT FORMULA)
-        print("  ├─ 💪 Calculating grind score (how hard do they really work?)...")
+        msg = "💪 Calculating grind score (how hard do they really work?)..."
+        print(f"  ├─ {msg}")
+        if self.progress_callback:
+            self.progress_callback("cto", msg)
         grind_score = self._calculate_grind_score(contributions, profile)
 
         # 4. Tech Diversity Assessment
-        print("  ├─ 🔧 Assessing tech diversity (specialist or scattered?)...")
+        msg = "🔧 Assessing tech diversity (specialist or scattered?)..."
+        print(f"  ├─ {msg}")
+        if self.progress_callback:
+            self.progress_callback("cto", msg)
         tech_diversity = self._assess_tech_diversity(repositories)
 
         # 5. Key Projects Selection (Complexity-based)
-        print("  ├─ 🏆 Finding projects worth bragging about...")
+        msg = "🏆 Finding projects worth bragging about..."
+        print(f"  ├─ {msg}")
+        if self.progress_callback:
+            self.progress_callback("cto", msg)
         key_projects = self._identify_key_projects(repositories)
 
         # 6. Developer Archetype
-        print("  ├─ 🎭 Determining developer archetype (what's your coding personality?)...")
+        msg = "🎭 Determining developer archetype (what's your coding personality?)..."
+        print(f"  ├─ {msg}")
+        if self.progress_callback:
+            self.progress_callback("cto", msg)
         archetype = self._determine_archetype(
             language_analysis,
             skill_mapping,
@@ -308,7 +355,10 @@ class CTOAgent:
         )
 
         # 7. Impact Metrics
-        print("  ├─ 📈 Calculating impact (do people actually care?)...")
+        msg = "📈 Calculating impact (do people actually care?)..."
+        print(f"  ├─ {msg}")
+        if self.progress_callback:
+            self.progress_callback("cto", msg)
         impact_metrics = self._calculate_impact_metrics(
             social_proof,
             contributions,
@@ -1214,7 +1264,7 @@ def route_next_step(state: AgentState) -> str:
 # GRAPH BUILDER
 # ============================================================
 
-def create_detective_graph() -> StateGraph:
+def create_detective_graph(progress_callback=None) -> StateGraph:
     """
     Create the complete LangGraph with Detective, CTO, and Ghostwriter agents
     Full pipeline: Data Collection → Analysis → README Generation
@@ -1229,8 +1279,9 @@ def create_detective_graph() -> StateGraph:
     if not GITHUB_TOKEN:
         raise ValueError("GITHUB_PAT not found in environment variables")
 
-    detective = DetectiveAgent(GITHUB_TOKEN)
-    cto = CTOAgent()
+    detective = DetectiveAgent(
+        GITHUB_TOKEN, progress_callback=progress_callback)
+    cto = CTOAgent(progress_callback=progress_callback)
     ghostwriter = GhostwriterAgent()
 
     # Add nodes

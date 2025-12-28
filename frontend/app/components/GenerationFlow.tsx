@@ -169,15 +169,18 @@ export default function GenerationFlow({ username, tone, onBack }: GenerationFlo
 
     const handleStyleChange = (newStyle: string) => {
         setSelectedStyle(newStyle);
-        // TODO: Trigger regeneration with new style
+        // Style selection will trigger ghostwriter to start
+        console.log('🎨 Style selected:', newStyle);
     };
+
+    const ctoCompleted = events.some(e => e.type === 'cto_complete');
+    const showStyleSelector = ctoCompleted && !finalMarkdown && loading;
 
     return (
         <div className="flex h-screen bg-[#fafafa]">
-            {/* Left Panel - 40% */}
-            <div className="w-[40%] border-r-4 border-black bg-white flex flex-col">
-                {/* Top Half - Profile */}
-                <div className="flex-1 border-b-4 border-black p-6 overflow-y-auto">
+            {/* Left Panel - 40% - Profile & Analysis */}
+            <div className="w-[40%] border-r-4 border-black bg-white overflow-y-auto">
+                <div className="p-6">
                     <div className="flex items-center justify-between mb-6">
                         <h2 className="text-2xl font-black tracking-tight text-black">PROFILE</h2>
                         <button
@@ -188,36 +191,92 @@ export default function GenerationFlow({ username, tone, onBack }: GenerationFlo
                         </button>
                     </div>
 
+                    {/* Profile Card */}
                     {profileData ? (
-                        <ProfileCard profile={profileData} analysis={analysisData} />
+                        <div className="mb-8">
+                            <ProfileCard profile={profileData} analysis={analysisData} />
+                        </div>
                     ) : (
-                        <div className="flex items-center justify-center h-64">
+                        <div className="flex items-center justify-center h-64 mb-8">
                             <div className="text-center">
                                 <div className="inline-block w-16 h-16 border-4 border-black border-t-transparent rounded-full animate-spin mb-4"></div>
                                 <p className="font-mono text-sm text-black/60">Loading profile...</p>
                             </div>
                         </div>
                     )}
-                </div>
 
-                {/* Bottom Half - Style Selector */}
-                <div className="flex-1 p-6 overflow-y-auto">
-                    <h2 className="text-2xl font-black tracking-tight mb-6 text-black">STYLE</h2>
-                    <StyleSelector
-                        selectedStyle={selectedStyle}
-                        onStyleChange={handleStyleChange}
-                        disabled={loading}
-                    />
+                    {/* Analysis Section - Show when CTO completes */}
+                    {analysisData && (
+                        <div className="space-y-4">
+                            <h2 className="text-2xl font-black tracking-tight text-black mb-4">ANALYSIS</h2>
+
+                            {/* Developer Archetype */}
+                            <div className="border-4 border-black bg-[#4ecdc4] p-6">
+                                <h4 className="font-black text-lg mb-2 text-black">Developer Archetype</h4>
+                                <p className="font-mono text-base text-black">{analysisData.archetype}</p>
+                            </div>
+
+                            {/* Grind Score */}
+                            {analysisData.grind_score && (
+                                <div className="border-4 border-black bg-[#ff6b6b] p-6">
+                                    <h4 className="font-black text-lg mb-3 text-black">Grind Score</h4>
+                                    <div className="flex items-center gap-4">
+                                        <div className="text-3xl">{analysisData.grind_score.emoji}</div>
+                                        <div className="flex-1">
+                                            <div className="font-mono text-xl font-bold text-black">{analysisData.grind_score.score}/100</div>
+                                            <div className="font-mono text-sm text-black/70">{analysisData.grind_score.label}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Primary Language */}
+                            {analysisData.primary_language && (
+                                <div className="border-4 border-black bg-[#ffe66d] p-6">
+                                    <h4 className="font-black text-lg mb-2 text-black">Primary Language</h4>
+                                    <div className="font-mono text-base text-black">
+                                        {analysisData.primary_language.name} ({analysisData.primary_language.percentage}%)
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Top Languages */}
+                            {analysisData.top_languages && analysisData.top_languages.length > 0 && (
+                                <div className="border-4 border-black bg-white p-6">
+                                    <h4 className="font-black text-lg mb-3 text-black">Tech Stack</h4>
+                                    <div className="space-y-2">
+                                        {analysisData.top_languages.slice(0, 5).map((lang: any, i: number) => (
+                                            <div key={i} className="flex items-center gap-3">
+                                                <div className="w-24 font-mono text-xs text-black">{lang.name}</div>
+                                                <div className="flex-1 h-6 border-2 border-black bg-white relative overflow-hidden">
+                                                    <div
+                                                        className="h-full bg-[#4ecdc4] transition-all duration-500"
+                                                        style={{ width: `${lang.percentage}%` }}
+                                                    />
+                                                </div>
+                                                <div className="w-12 font-mono text-xs text-right text-black/60">{lang.percentage}%</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
 
             {/* Right Panel - 60% */}
             <div className="flex-1 flex flex-col">
-                {loading ? (
-                    <LoadingPanel events={events} currentStage={currentStage} analysisData={analysisData} />
-                ) : (
-                    <ReadmePreview markdown={finalMarkdown} username={username} />
-                )}
+                <LoadingPanel
+                    events={events}
+                    currentStage={currentStage}
+                    analysisData={analysisData}
+                    showStyleSelector={showStyleSelector}
+                    selectedStyle={selectedStyle}
+                    onStyleChange={handleStyleChange}
+                    finalMarkdown={finalMarkdown}
+                    username={username}
+                />
             </div>
         </div>
     );

@@ -1018,6 +1018,10 @@ class GhostwriterAgent:
             print(
                 f"  ├─ 📝 Style: {preferences.get('style', 'modern').title()}")
 
+            user_desc = preferences.get('description', '')
+            if user_desc and user_desc.strip():
+                print(f"  ├─ 💡 Custom Requirements: {user_desc[:50]}...")
+
             if revision_instructions:
                 print(f"  ├─ 🔄 Revision Request: {revision_instructions}")
 
@@ -1089,6 +1093,7 @@ class GhostwriterAgent:
         """
         tone = preferences.get("tone", "professional")
         style = preferences.get("style", "modern")
+        user_description = preferences.get("description", "")
 
         # Extract key data
         profile = raw_data["profile"]
@@ -1128,6 +1133,17 @@ STRUCTURE:
 - GitHub Stats (badges + readme-stats)
 - Connect section (if public data available)
 
+"""
+
+        # Add user's custom requirements if provided
+        if user_description and user_description.strip():
+            system_prompt += f"""
+USER SPECIAL REQUIREMENTS:
+The user has specifically requested the following be included or emphasized:
+"{user_description}"
+
+IMPORTANT: Incorporate these requirements naturally into the README while following the {style} style.
+If requirements conflict with the style, prioritize the user's requests.
 """
 
         if revision_instructions:
@@ -1233,32 +1249,95 @@ TONE: Creative and unique
         """Get writing instructions based on style (structure/format)"""
         instructions = {
             "professional": """
-STYLE: Professional and Structured
-- Traditional sections: About, Skills, Projects, Stats
-- Business-appropriate formatting
-- Clear hierarchy with headings
-- Comprehensive but organized
+STYLE: Professional - Polished and corporate-ready
+SECTIONS TO INCLUDE:
+- About Me: Brief professional summary highlighting expertise
+- Core Skills: Organized in categories (Languages, Frameworks, Tools)
+- Professional Experience: Featured projects with business impact
+- GitHub Stats: Clean statistical overview
+- Contact: Professional contact links
+
+WHAT TO SHOW:
+✓ Technical skills and certifications
+✓ Project outcomes and metrics
+✓ Professional achievements
+✓ Clean, organized layout
+✓ Industry-standard formatting
+
+WHAT TO AVOID:
+✗ Casual language or emojis
+✗ Personal hobbies unrelated to tech
+✗ Excessive decorations
+✗ Informal badges
 """,
             "creative": """
-STYLE: Creative and Expressive
-- Unique section names and structure
-- Storytelling approach
-- Visual elements and custom badges
-- Personality-driven layout
+STYLE: Creative - Bold and expressive with personality
+SECTIONS TO INCLUDE:
+- Unique intro with personality (use emojis!)
+- Skills showcase with visual elements
+- Project stories (not just lists)
+- Fun facts or personal touches
+- Creative contact section
+
+WHAT TO SHOW:
+✓ Personal brand and unique voice
+✓ Visual badges and custom graphics
+✓ Storytelling in project descriptions
+✓ Hobbies and interests
+✓ Unique section names (avoid boring "About Me")
+
+WHAT TO AVOID:
+✗ Generic corporate language
+✗ Boring bullet points
+✗ Standard templates
+✗ Minimal formatting
 """,
             "minimal": """
-STYLE: Minimal and Clean
-- Essential sections only: About, Top Skills, Contact
-- No excessive formatting or badges
-- Plenty of whitespace
-- Focus on content, not decoration
+STYLE: Minimal - Clean and concise, less is more
+SECTIONS TO INCLUDE:
+- One-line intro
+- Top 5-7 core skills only
+- 2-3 best projects
+- Simple contact links
+- Optional: One minimal stat visualization
+
+WHAT TO SHOW:
+✓ Essential information only
+✓ Plenty of whitespace
+✓ Brief, impactful descriptions
+✓ Focus on quality over quantity
+
+WHAT TO AVOID:
+✗ Long paragraphs
+✗ Multiple badges
+✗ Extensive project lists
+✗ Decorative elements
+✗ Excessive stats
 """,
             "detailed": """
-STYLE: Detailed and Comprehensive
-- Extensive sections covering everything
-- Multiple subsections with detailed explanations
-- Include all projects, skills, and experiences
-- Rich with stats, badges, and visualizations
+STYLE: Detailed - Comprehensive coverage with in-depth information
+SECTIONS TO INCLUDE:
+- Extended professional summary
+- Complete skill breakdown (categorized)
+- All significant projects with detailed descriptions
+- Technical stack for each project
+- Multiple GitHub stat visualizations
+- Contribution graphs
+- Blog posts or articles (if any)
+- Education and certifications
+
+WHAT TO SHOW:
+✓ Everything! Be thorough
+✓ Technical details and architecture
+✓ Multiple code examples or demos
+✓ Metrics and achievements
+✓ Learning journey
+✓ All badges and visualizations
+
+WHAT TO AVOID:
+✗ Brevity - go deep!
+✗ Skipping details
+✗ Minimal formatting
 """,
         }
         return instructions.get(style, instructions["professional"])

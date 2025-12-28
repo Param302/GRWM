@@ -20,7 +20,7 @@ interface LoadingPanelProps {
     analysisData?: any;
     showStyleSelector?: boolean;
     selectedStyle?: string;
-    onStyleChange?: (style: string) => void;
+    onStyleChange?: (style: string, description?: string) => void;
     finalMarkdown?: string;
     username?: string;
 }
@@ -57,6 +57,9 @@ export default function LoadingPanel({
     const [showInfo, setShowInfo] = useState(false);
     const [showShare, setShowShare] = useState(false);
     const [darkMode, setDarkMode] = useState(false);
+    const [userDescription, setUserDescription] = useState('');
+    const [showDescriptionInput, setShowDescriptionInput] = useState(false);
+    const [tempSelectedStyle, setTempSelectedStyle] = useState('');
 
     // Check completion status for each stage
     const detectiveCompleted = events.some(e => e.type === 'detective_complete');
@@ -64,11 +67,31 @@ export default function LoadingPanel({
     const ghostwriterCompleted = events.some(e => e.type === 'ghostwriter_complete');
 
     const styles = [
-        { id: 'professional', name: 'Professional', desc: 'Polished and corporate-ready format for business profiles', icon: Briefcase },
-        { id: 'creative', name: 'Creative', desc: 'Unique and expressive style with personality and flair', icon: Sparkles },
-        { id: 'minimal', name: 'Minimal', desc: 'Clean and concise with essential information only', icon: Minimize2 },
-        { id: 'detailed', name: 'Detailed', desc: 'Comprehensive coverage with in-depth project descriptions', icon: List },
+        { id: 'professional', name: 'Professional', desc: 'Polished and corporate-ready', icon: Briefcase, color: 'bg-blue-50' },
+        { id: 'creative', name: 'Creative', desc: 'Bold and expressive', icon: Sparkles, color: 'bg-purple-50' },
+        { id: 'minimal', name: 'Minimal', desc: 'Clean and concise', icon: Minimize2, color: 'bg-green-50' },
+        { id: 'detailed', name: 'Detailed', desc: 'Comprehensive coverage', icon: List, color: 'bg-amber-50' },
     ];
+
+    const handleStyleSelect = (styleId: string) => {
+        setTempSelectedStyle(styleId);
+        setShowDescriptionInput(true);
+    };
+
+    const handleGenerate = () => {
+        if (onStyleChange && tempSelectedStyle) {
+            onStyleChange(tempSelectedStyle, userDescription);
+            setShowDescriptionInput(false);
+        }
+    };
+
+    const handleSkip = () => {
+        if (onStyleChange && tempSelectedStyle) {
+            onStyleChange(tempSelectedStyle, '');
+            setUserDescription('');
+            setShowDescriptionInput(false);
+        }
+    };
 
     const handleCopy = async () => {
         if (finalMarkdown) {
@@ -197,10 +220,10 @@ export default function LoadingPanel({
                                 <div
                                     key={stage}
                                     className={`flex-1 border-4 border-black p-4 transition-all relative ${stageStatus === 'active'
-                                            ? 'bg-[#ffe66d] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
-                                            : stageStatus === 'completed'
-                                                ? 'bg-[#4ecdc4]'
-                                                : 'bg-[#f0f0f0]'
+                                        ? 'bg-[#ffe66d] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
+                                        : stageStatus === 'completed'
+                                            ? 'bg-[#4ecdc4]'
+                                            : 'bg-[#f0f0f0]'
                                         }`}
                                 >
                                     {/* Active signal indicator */}
@@ -222,28 +245,65 @@ export default function LoadingPanel({
 
             {/* Style Selector - Show after CTO completes, before README */}
             {showStyleSelector && onStyleChange && (
-                <div className="border-b-4 border-black bg-white p-6">
-                    <h3 className="font-black text-2xl mb-6 text-black uppercase">Choose Your README Style</h3>
-                    <div className="grid grid-cols-2 gap-6">
-                        {styles.map((style) => {
-                            const StyleIcon = style.icon;
-                            return (
-                                <button
-                                    key={style.id}
-                                    onClick={() => onStyleChange(style.id)}
-                                    className={`border-4 border-black p-6 text-left transition-all font-black ${selectedStyle === style.id
-                                            ? 'bg-black text-white shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] scale-105'
-                                            : 'bg-white text-black hover:translate-x-1 hover:translate-y-1 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
-                                        }`}
-                                >
-                                    <div className="flex items-center gap-3 mb-3">
-                                        <StyleIcon className="w-8 h-8" />
-                                        <div className="text-xl">{style.name}</div>
+                <div className="border-b-4 border-black bg-white p-6 overflow-hidden">
+                    <h3 className="font-black text-xl mb-4 text-black uppercase">What's Special About Your Portfolio?</h3>
+                    <p className="text-sm text-gray-600 mb-4">Choose a style that represents you best</p>
+
+                    <div className="flex gap-4 transition-all duration-500">
+                        {/* Style Options - Slides to left when description shown */}
+                        <div className={`transition-all duration-500 ${showDescriptionInput ? 'w-[35%]' : 'w-full'}`}>
+                            <div className={`grid gap-3 ${showDescriptionInput ? 'grid-cols-1' : 'grid-cols-4'}`}>
+                                {styles.map((style) => {
+                                    const StyleIcon = style.icon;
+                                    return (
+                                        <button
+                                            key={style.id}
+                                            onClick={() => handleStyleSelect(style.id)}
+                                            className={`border-3 border-black p-3 text-center transition-all ${tempSelectedStyle === style.id
+                                                ? 'bg-black text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] scale-105'
+                                                : `${style.color} text-black hover:translate-x-1 hover:translate-y-1 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]`
+                                                }`}
+                                        >
+                                            <div className="flex items-center gap-2 justify-center">
+                                                <StyleIcon className={`${showDescriptionInput ? 'w-4 h-4' : 'w-6 h-6'}`} />
+                                                <div className={`font-bold ${showDescriptionInput ? 'text-xs' : 'text-xs'}`}>{style.name}</div>
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* Description Input - Slides in from right */}
+                        {showDescriptionInput && tempSelectedStyle && (
+                            <div className="w-[65%] animate-slide-in-right">
+                                <div className="flex flex-col h-full">
+                                    <textarea
+                                        value={userDescription}
+                                        onChange={(e) => setUserDescription(e.target.value)}
+                                        placeholder="Want something specific in your portfolio? Mention key projects, skills, or achievements you'd like highlighted... (Optional)"
+                                        className="w-full h-32 p-3 border-3 border-black font-mono text-sm focus:outline-none focus:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all resize-none"
+                                        maxLength={500}
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1 mb-3">{userDescription.length}/500 characters</p>
+
+                                    <div className="flex gap-3">
+                                        <button
+                                            onClick={handleSkip}
+                                            className="flex-1 border-3 border-black bg-[#4a90e2] text-white hover:bg-[#357abd] font-black px-4 py-2 transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-x-1 hover:translate-y-1 text-sm"
+                                        >
+                                            SKIP & CONTINUE
+                                        </button>
+                                        <button
+                                            onClick={handleGenerate}
+                                            className="flex-1 border-3 border-black bg-black text-white hover:bg-gray-800 font-black px-4 py-2 transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-x-1 hover:translate-y-1 text-sm"
+                                        >
+                                            ENTER
+                                        </button>
                                     </div>
-                                    <div className="font-mono text-xs font-normal opacity-70 leading-relaxed">{style.desc}</div>
-                                </button>
-                            );
-                        })}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
@@ -308,28 +368,39 @@ export default function LoadingPanel({
                                     }
                                     return true;
                                 })
-                                .map((event, index) => (
-                                    <div
-                                        key={events.length - index}
-                                        className={`border-2 border-black p-3 font-mono text-sm ${event.type === 'error'
-                                            ? 'bg-[#ff6b6b] text-black'
-                                            : event.type.includes('complete')
-                                                ? 'bg-[#4ecdc4] text-black'
-                                                : event.type === 'progress'
-                                                    ? 'bg-[#ffe66d] text-black'
-                                                    : 'bg-white text-black'
-                                            }`}
-                                    >
-                                        <div className="flex items-start gap-2">
-                                            <span className="text-black/40 text-xs mt-0.5">
-                                                {event.timestamp && !isNaN(new Date(event.timestamp).getTime())
-                                                    ? `[${new Date(event.timestamp).toLocaleTimeString()}]`
-                                                    : ''}
-                                            </span>
-                                            <span className="flex-1">{event.message}</span>
+                                .map((event, index) => {
+                                    // Calculate opacity based on position (latest = full opacity)
+                                    const getOpacity = (index: number) => {
+                                        if (index === 0) return 'opacity-100'; // Latest - full
+                                        if (index === 1) return 'opacity-80';  // Latest - 1
+                                        if (index === 2) return 'opacity-60';  // Latest - 2
+                                        if (index === 3) return 'opacity-40';  // Latest - 3
+                                        return 'opacity-20';                    // Latest - 4 and older
+                                    };
+
+                                    return (
+                                        <div
+                                            key={events.length - index}
+                                            className={`border-2 border-black p-3 font-mono text-sm transition-opacity duration-300 ${getOpacity(index)} ${event.type === 'error'
+                                                ? 'bg-[#ff6b6b] text-black'
+                                                : event.type.includes('complete')
+                                                    ? 'bg-[#4ecdc4] text-black'
+                                                    : event.type === 'progress'
+                                                        ? 'bg-[#ffe66d] text-black'
+                                                        : 'bg-white text-black'
+                                                }`}
+                                        >
+                                            <div className="flex items-start gap-2">
+                                                <span className="text-black/40 text-xs mt-0.5">
+                                                    {event.timestamp && !isNaN(new Date(event.timestamp).getTime())
+                                                        ? `[${new Date(event.timestamp).toLocaleTimeString()}]`
+                                                        : ''}
+                                                </span>
+                                                <span className="flex-1">{event.message}</span>
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                         </div>
                     </div>
                 </>

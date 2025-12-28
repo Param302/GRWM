@@ -6,11 +6,12 @@ import os
 import asyncio
 import uuid
 import json
+import re
 from typing import Dict, Optional, AsyncGenerator
 from datetime import datetime
 from asyncio import Queue
 
-from fastapi import FastAPI, BackgroundTasks
+from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -34,6 +35,47 @@ app.add_middleware(
 # In-memory session storage with event queues (use Redis in production)
 active_sessions: Dict[str, Dict] = {}
 event_queues: Dict[str, Queue] = {}
+
+
+def sanitize_user_input(text: str, max_length: int = 500) -> str:
+    """
+    Sanitize user input to prevent prompt injection attacks
+    - Limit length
+    - Remove system-like instructions
+    - Clean special characters that could break prompts
+    """
+    # Truncate to max length
+    text = text[:max_length].strip()
+
+    # Remove potential instruction injections
+    dangerous_patterns = [
+        "ignore previous instructions",
+        "ignore all instructions",
+        "disregard",
+        "forget",
+        "system:",
+        "assistant:",
+        "user:",
+        "[INST]",
+        "</s>",
+        "<|im_start|>",
+        "<|im_end|>",
+    ]
+
+    text_lower = text.lower()
+    for pattern in dangerous_patterns:
+        if pattern in text_lower:
+            # Replace with safe placeholder
+            text = text.replace(pattern, "[content removed]")
+            text = text.replace(pattern.upper(), "[content removed]")
+            text = text.replace(pattern.title(), "[content removed]")
+
+    # Keep only safe characters (alphanumeric, basic punctuation, spaces)
+    # Allow: letters, numbers, spaces, periods, commas, hyphens, underscores, parentheses
+    import re
+    text = re.sub(r'[^\w\s.,\-()!?;:\'\"/]', '', text)
+
+    return text.strip()
 
 
 class GenerateRequest(BaseModel):
@@ -64,10 +106,12 @@ async def health_check():
 async def select_style(request: dict, background_tasks: BackgroundTasks):
     """
     User selects a README style after CTO analysis
+    Optionally includes custom description/requirements
     This triggers the Ghostwriter agent to start
     """
     session_id = request.get("session_id")
     style = request.get("style")
+    description = request.get("description", "")  # Optional user description
 
     if not session_id or not style:
         raise HTTPException(
@@ -76,8 +120,14 @@ async def select_style(request: dict, background_tasks: BackgroundTasks):
     if session_id not in active_sessions:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    # Update session with selected style
+    # Sanitize description to prevent prompt injection
+    if description:
+        description = sanitize_user_input(description)
+        print(f"📝 User description: {description[:100]}...")
+
+    # Update session with selected style and description
     active_sessions[session_id]["preferences"]["style"] = style
+    active_sessions[session_id]["preferences"]["description"] = description
     active_sessions[session_id]["style_selected"] = True
 
     print(f"🎨 Style selected for session {session_id}: {style}")
@@ -91,7 +141,8 @@ async def select_style(request: dict, background_tasks: BackgroundTasks):
         session_id,
         username,
         tone,
-        style
+        style,
+        description
     )
 
     return {
@@ -313,10 +364,11 @@ async def run_agent(session_id: str, username: str, tone: str, style: str):
         print(f"💾 Error event stored in session\n")
 
 
-async def continue_with_ghostwriter(session_id: str, username: str, tone: str, style: str):
+async def continue_with_ghostwriter(session_id: str, username: str, tone: str, style: str, description: str = ""):
     """
     Run Ghostwriter agent manually (not through graph) after style selection
     Uses the stored state from CTO completion
+    Includes optional user description for customization
     """
     import queue as thread_queue
     from threading import Thread
@@ -359,10 +411,10 @@ async def continue_with_ghostwriter(session_id: str, username: str, tone: str, s
                 # Initialize ghostwriter
                 ghostwriter = GhostwriterAgent()
 
-                # Update state with selected style
+                # Update state with selected style and description
                 state_with_style = {
                     **stored_state,
-                    "user_preferences": {"tone": tone, "style": style}
+                    "user_preferences": {"tone": tone, "style": style, "description": description}
                 }
 
                 # Run ghostwriter directly (not through graph)
@@ -611,6 +663,9 @@ async def stream_events(session_id: str):
         yield ": connected\n\n"
 
         # Stream events from queue in real-time
+        keepalive_count = 0
+        max_keepalives = 1  # Allow only 1 keepalive (60 seconds)
+
         try:
             while True:
                 # Wait for next event from queue with timeout
@@ -619,6 +674,9 @@ async def stream_events(session_id: str):
                     print(
                         f"📤 Sending event to client: {event.get('type', 'unknown')}")
                     yield f"data: {json.dumps(event)}\n\n"
+
+                    # Reset keepalive counter when we get an event
+                    keepalive_count = 0
 
                     # Check if this is a completion event
                     if event.get("type") == "complete" or event.get("type") == "error":
@@ -632,9 +690,27 @@ async def stream_events(session_id: str):
                         break
 
                 except asyncio.TimeoutError:
+                    keepalive_count += 1
+                    print(
+                        f"💓 Sent keepalive ({keepalive_count}/{max_keepalives})")
+
+                    if keepalive_count > max_keepalives:
+                        # Timeout exceeded - close connection
+                        print(f"⏰ Max keepalives exceeded, closing connection")
+                        timeout_event = {
+                            'type': 'timeout',
+                            'message': 'Ghostwriter is exhausted! Please try again.',
+                            'timestamp': datetime.now().isoformat()
+                        }
+                        yield f"data: {json.dumps(timeout_event)}\n\n"
+
+                        # Cleanup session
+                        asyncio.create_task(
+                            cleanup_session(session_id, delay=5))
+                        break
+
                     # Send keepalive if no events for 60s
                     yield ": keepalive\n\n"
-                    print("💓 Sent keepalive")
 
         except Exception as e:
             print(f"❌ Error in event generator: {str(e)}")

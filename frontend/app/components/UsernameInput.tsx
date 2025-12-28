@@ -64,15 +64,18 @@ export default function UsernameInput({ onStart }: UsernameInputProps) {
                 <div className="mt-12 grid grid-cols-3 gap-4">
                     <div className="border-4 border-black bg-[#ff6b6b] p-4">
                         <p className="font-mono font-bold text-sm text-black">01</p>
-                        <p className="mt-2 text-sm font-mono text-black">AI analyzes your profile</p>
+                        <p className="mt-2 text-sm font-mono text-black font-bold">Multi-Agentic AI</p>
+                        <p className="mt-1 text-xs font-mono text-black/70">3 AI agents craft your README</p>
                     </div>
                     <div className="border-4 border-black bg-[#4ecdc4] p-4">
                         <p className="font-mono font-bold text-sm text-black">02</p>
-                        <p className="mt-2 text-sm font-mono text-black">Generates custom README</p>
+                        <p className="mt-2 text-sm font-mono text-black font-bold">Styled READMEs</p>
+                        <p className="mt-1 text-xs font-mono text-black/70">4 styles: Pro, Creative, Minimal, Detailed</p>
                     </div>
                     <div className="border-4 border-black bg-[#ffe66d] p-4">
                         <p className="font-mono font-bold text-sm text-black">03</p>
-                        <p className="mt-2 text-sm font-mono text-black">Copy & paste magic</p>
+                        <p className="mt-2 text-sm font-mono text-black font-bold">Real-Time Magic</p>
+                        <p className="mt-1 text-xs font-mono text-black/70">Watch AI agents work live</p>
                     </div>
                 </div>
             </div>

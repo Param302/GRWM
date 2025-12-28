@@ -60,6 +60,9 @@ export default function GenerationFlow({ username, tone, onBack }: GenerationFlo
     const [selectedStyle, setSelectedStyle] = useState('');
     const [currentStage, setCurrentStage] = useState('');
     const [sessionId, setSessionId] = useState<string>('');
+    const [showTimeoutModal, setShowTimeoutModal] = useState(false);
+    const [showErrorModal, setShowErrorModal] = useState(false);
+    const [errorMessage, setErrorMessage] = useState('');
     const hasStartedRef = useRef(false);
     const eventSourceRef = useRef<EventSource | null>(null);
 
@@ -145,6 +148,22 @@ export default function GenerationFlow({ username, tone, onBack }: GenerationFlo
                     console.error('❌ Error event:', data.message);
                     eventSource.close();
                     setLoading(false);
+
+                    // Check if it's a detective/username error
+                    if (data.message && (
+                        data.message.includes('Failed to fetch data for @') ||
+                        data.message.includes('User not found') ||
+                        data.message.includes('404') ||
+                        data.stage === 'detective'
+                    )) {
+                        setErrorMessage(data.message);
+                        setShowErrorModal(true);
+                    }
+                } else if (data.type === 'timeout') {
+                    console.error('⏰ Timeout event:', data.message);
+                    eventSource.close();
+                    setLoading(false);
+                    setShowTimeoutModal(true);
                 }
             };
 
@@ -170,9 +189,9 @@ export default function GenerationFlow({ username, tone, onBack }: GenerationFlo
         }
     };
 
-    const handleStyleChange = async (newStyle: string) => {
+    const handleStyleChange = async (newStyle: string, description?: string) => {
         setSelectedStyle(newStyle);
-        console.log('🎨 Style selected:', newStyle);
+        console.log('🎨 Style selected:', newStyle, 'Description:', description);
 
         if (!sessionId) {
             console.error('❌ No session ID available');
@@ -182,11 +201,15 @@ export default function GenerationFlow({ username, tone, onBack }: GenerationFlo
         const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
         try {
-            // Notify backend of style selection
+            // Notify backend of style selection and optional description
             const response = await fetch(`${API_URL}/api/select-style`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ session_id: sessionId, style: newStyle })
+                body: JSON.stringify({
+                    session_id: sessionId,
+                    style: newStyle,
+                    description: description || ''
+                })
             });
 
             if (!response.ok) {
@@ -213,10 +236,10 @@ export default function GenerationFlow({ username, tone, onBack }: GenerationFlo
                         <h2 className="text-2xl font-black tracking-tight text-black">PROFILE</h2>
                         <button
                             onClick={onBack}
-                            className="px-4 py-2 border-2 border-black bg-white hover:bg-black hover:text-white font-mono font-bold transition-all text-sm flex items-center gap-2"
+                            className="p-3 border-4 border-black bg-white hover:bg-[#f0f0f0] text-black font-black transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1"
+                            title="Go back to home"
                         >
-                            <ArrowLeft className="w-4 h-4" />
-                            BACK
+                            <ArrowLeft className="w-5 h-5" />
                         </button>
                     </div>
                 </div>
@@ -228,7 +251,11 @@ export default function GenerationFlow({ username, tone, onBack }: GenerationFlo
                     ) : (
                         <div className="flex items-center justify-center h-64">
                             <div className="text-center">
-                                <div className="inline-block w-16 h-16 border-4 border-black border-t-transparent rounded-full animate-spin mb-4"></div>
+                                <div className="flex gap-2 justify-center mb-4">
+                                    <div className="w-3 h-3 bg-black rounded-full animate-bounce"></div>
+                                    <div className="w-3 h-3 bg-black rounded-full animate-bounce" style={{ animationDelay: '200ms' }}></div>
+                                    <div className="w-3 h-3 bg-black rounded-full animate-bounce" style={{ animationDelay: '400ms' }}></div>
+                                </div>
                                 <p className="font-mono text-sm text-black/60">Loading profile...</p>
                             </div>
                         </div>
@@ -328,6 +355,73 @@ export default function GenerationFlow({ username, tone, onBack }: GenerationFlo
                     username={username}
                 />
             </div>
+
+            {/* Timeout Modal */}
+            {showTimeoutModal && (
+                <div className="fixed inset-0 bg-black/20 backdrop-blur-md flex items-center justify-center z-50">
+                    <div className="bg-white border-4 border-black p-8 max-w-md shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] animate-slideIn">
+                        <div className="flex justify-between items-start mb-4">
+                            <h2 className="text-2xl font-black text-black">Ghostwriter is exhausted! 😴</h2>
+                            <button
+                                onClick={() => {
+                                    setShowTimeoutModal(false);
+                                    onBack();
+                                }}
+                                className="text-black hover:text-gray-600 text-2xl font-bold leading-none"
+                            >
+                                ×
+                            </button>
+                        </div>
+                        <p className="text-black mb-6 font-mono text-sm">
+                            Took way too long to decide... our agents literally couldn't wait and went to sleep! Give it another shot though, you got this! 🚀
+                        </p>
+                        <button
+                            onClick={() => {
+                                setShowTimeoutModal(false);
+                                onBack();
+                            }}
+                            className="w-full border-4 border-black bg-black text-white hover:bg-gray-800 font-black px-6 py-3 transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-x-1 hover:translate-y-1"
+                        >
+                            OKAY, GO BACK
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Error Modal - Username Not Found */}
+            {showErrorModal && (
+                <div className="fixed inset-0 bg-black/20 backdrop-blur-md flex items-center justify-center z-50">
+                    <div className="bg-white border-4 border-black p-8 max-w-md shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] animate-slideIn">
+                        <div className="flex justify-between items-start mb-4">
+                            <h2 className="text-2xl font-black text-black">Username Not Found! 🔍</h2>
+                            <button
+                                onClick={() => {
+                                    setShowErrorModal(false);
+                                    onBack();
+                                }}
+                                className="text-black hover:text-gray-600 text-2xl font-bold leading-none"
+                            >
+                                ×
+                            </button>
+                        </div>
+                        <p className="text-black mb-4 font-mono text-sm">
+                            {errorMessage || 'Could not find the GitHub user. Please check the username and try again.'}
+                        </p>
+                        <p className="text-black/60 mb-6 font-mono text-xs">
+                            Make sure the username is correct and the profile is public.
+                        </p>
+                        <button
+                            onClick={() => {
+                                setShowErrorModal(false);
+                                onBack();
+                            }}
+                            className="w-full border-4 border-black bg-[#ff6b6b] text-white hover:bg-[#ff5252] font-black px-6 py-3 transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-x-1 hover:translate-y-1"
+                        >
+                            RETRY WITH NEW USERNAME
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

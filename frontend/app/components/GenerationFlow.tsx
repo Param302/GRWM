@@ -66,6 +66,23 @@ export default function GenerationFlow({ username, tone, onBack }: GenerationFlo
     const hasStartedRef = useRef(false);
     const eventSourceRef = useRef<EventSource | null>(null);
 
+    // Utility function to convert image URL to base64
+    const imageUrlToBase64 = async (url: string): Promise<string> => {
+        try {
+            const response = await fetch(url);
+            const blob = await response.blob();
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+        } catch (error) {
+            console.error('Failed to convert image to base64:', error);
+            return url; // Fallback to original URL
+        }
+    };
+
     useEffect(() => {
         // Prevent double execution in React strict mode
         if (!hasStartedRef.current) {
@@ -130,7 +147,16 @@ export default function GenerationFlow({ username, tone, onBack }: GenerationFlo
                 // Handle specific events
                 if (data.type === 'detective_complete') {
                     console.log('👤 Profile data received');
-                    setProfileData(data.data.profile);
+                    // Convert avatar URL to base64 to avoid CORS issues with html2canvas
+                    const profileWithBase64Avatar = { ...data.data.profile };
+                    if (profileWithBase64Avatar.avatar_url) {
+                        imageUrlToBase64(profileWithBase64Avatar.avatar_url).then(base64 => {
+                            profileWithBase64Avatar.avatar_url = base64;
+                            setProfileData(profileWithBase64Avatar);
+                        });
+                    } else {
+                        setProfileData(profileWithBase64Avatar);
+                    }
                 } else if (data.type === 'cto_complete') {
                     console.log('🧠 Analysis data received');
                     setAnalysisData(data.data);
@@ -231,15 +257,16 @@ export default function GenerationFlow({ username, tone, onBack }: GenerationFlo
             {/* Left Panel - 40% - Profile & Analysis */}
             <div className="w-[40%] border-r-4 border-black bg-white flex flex-col">
                 {/* Fixed Header */}
-                <div className="p-8">
+                <div className="p-6">
                     <div className="flex items-center justify-between">
                         <h2 className="text-2xl font-black tracking-tight text-black">PROFILE</h2>
                         <button
                             onClick={onBack}
-                            className="p-3 border-4 border-black bg-white hover:bg-[#f0f0f0] text-black font-black transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1"
+                            className="flex items-center gap-1 py-2 px-4 border-4 border-black bg-white hover:bg-[#f0f0f0] text-black font-black transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1"
                             title="Go back to home"
                         >
                             <ArrowLeft className="w-5 h-5" />
+                            <span>BACK</span>
                         </button>
                     </div>
                 </div>

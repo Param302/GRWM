@@ -4,7 +4,7 @@ import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
-import { Info, Copy, Check, FileDown, Share2, Search, Brain, Pen, Twitter, Linkedin, Link, Moon, Sun, HelpCircle, ArrowLeft, Briefcase, Sparkles, Minimize2, List } from 'lucide-react';
+import { Info, Copy, Check, FileDown, Share2, Search, Brain, Pen, Twitter, Linkedin, Link, Moon, Sun, HelpCircle, ArrowLeft, Briefcase, Sparkles, Minimize2, List, Send, Mail } from 'lucide-react';
 
 interface Event {
     type: string;
@@ -60,6 +60,7 @@ export default function LoadingPanel({
     const [userDescription, setUserDescription] = useState('');
     const [showDescriptionInput, setShowDescriptionInput] = useState(false);
     const [tempSelectedStyle, setTempSelectedStyle] = useState('');
+    const [screenshot, setScreenshot] = useState<string | null>(null);
 
     // Check completion status for each stage
     const detectiveCompleted = events.some(e => e.type === 'detective_complete');
@@ -115,23 +116,41 @@ export default function LoadingPanel({
         }
     };
 
-    const handleShare = (platform: string) => {
-        const text = `I just generated my GitHub README with GRWM! 🚀`;
+    const handleShare = async (platform: string) => {
+        const text = `I just generated my GitHub README with "Get README With Me"! 🚀`;
         const url = window.location.href;
 
         const shareUrls: Record<string, string> = {
             twitter: `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`,
             linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`,
-            copy: url
+            reddit: `https://reddit.com/submit?url=${encodeURIComponent(url)}&title=${encodeURIComponent(text)}`,
+            email: `mailto:?subject=${encodeURIComponent('Check out Get README With Me!')}&body=${encodeURIComponent(text + '\n\n' + url)}`,
+            whatsapp: `https://wa.me/?text=${encodeURIComponent(text + ' ' + url)}`,
+            instagram: url, // Instagram doesn't have direct web sharing, so just copy link
         };
 
-        if (platform === 'copy') {
+        if (platform === 'copyLink') {
             navigator.clipboard.writeText(url);
-            alert('Link copied to clipboard!');
+            alert('Link copied!');
+        } else if (platform === 'copyImage') {
+            if (screenshot) {
+                try {
+                    const blob = await (await fetch(screenshot)).blob();
+                    await navigator.clipboard.write([
+                        new ClipboardItem({ 'image/png': blob })
+                    ]);
+                    alert('Image copied!');
+                } catch (err) {
+                    console.error('Failed to copy image:', err);
+                    alert('Failed to copy image. Try downloading instead.');
+                }
+            }
+        } else if (platform === 'instagram') {
+            navigator.clipboard.writeText(url);
+            alert('Link copied!');
         } else {
             window.open(shareUrls[platform], '_blank', 'width=600,height=400');
         }
-        setShowShare(false);
     };
 
     return (
@@ -140,17 +159,51 @@ export default function LoadingPanel({
             <div className="border-b-4 border-black bg-white p-6">
                 <div className="flex items-center justify-between">
                     <div>
-                        <h1 className="text-4xl font-black text-black tracking-tight">GRWM</h1>
-                        <p className="font-mono text-sm text-black/60 mt-1">Get README With Me</p>
+                        <span className="flex gap-2 items-end">
+                            <h1 className="text-4xl font-black text-black">GRWM</h1>
+                            <h3 className="text-xl font-semibold text-black"> - Get README With Me</h3>
+                        </span>
+                        <p className="font-mono text-sm text-black/60 mt-1">Multi-Agentic AI-Powered GitHub Portfolio Generator</p>
                     </div>
                     {finalMarkdown && (
-                        <button
-                            onClick={() => setShowShare(true)}
-                            className="px-4 py-2 border-4 border-black bg-white hover:bg-[#ff6b6b] font-black transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1"
-                            title="Share"
-                        >
-                            <Share2 className="w-5 h-5" />
-                        </button>
+                        <div className="flex items-center gap-4">
+                            <div className="text-right">
+                                <p className="font-mono text-sm font-bold text-black">Share it with your friends!</p>
+                                <p className="font-mono text-xs text-black/60">Spread the word on social media</p>
+                            </div>
+                            <button
+                                onClick={async () => {
+                                    // Capture screenshot of entire visible webpage first, then open modal
+                                    try {
+                                        const html2canvas = (await import('html2canvas-pro')).default;
+                                        // Capture the entire document body (whole page)
+                                        const canvas = await html2canvas(document.body, {
+                                            scale: 0.5,
+                                            backgroundColor: '#fafafa',
+                                            logging: false,
+                                            useCORS: true,
+                                            allowTaint: true,
+                                            ignoreElements: (element) => {
+                                                // Skip modal overlays to avoid capturing them
+                                                return element.classList?.contains('fixed');
+                                            }
+                                        });
+                                        const imgData = canvas.toDataURL('image/png');
+                                        setScreenshot(imgData);
+                                    } catch (error) {
+                                        console.error('Screenshot capture failed:', error);
+                                        // Set null if fails but still open modal
+                                        setScreenshot(null);
+                                    }
+                                    // Open modal after screenshot attempt
+                                    setShowShare(true);
+                                }}
+                                className="px-4 py-2 border-4 border-black bg-white hover:bg-[#ff6b6b] font-black transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1"
+                                title="Share"
+                            >
+                                <Share2 className="w-5 h-5" />
+                            </button>
+                        </div>
                     )}
                 </div>
             </div>
@@ -160,7 +213,7 @@ export default function LoadingPanel({
                 <div className="border-b-4 border-black bg-white p-6">
                     <div className="flex items-center justify-between gap-4">
                         <div className="flex items-center gap-3">
-                            <h2 className="text-2xl font-black text-black">Your GitHub Portfolio is Ready</h2>
+                            <h2 className="text-2xl font-black text-black">Your GitHub Portfolio is Ready!</h2>
                             <button
                                 onClick={() => setShowInfo(true)}
                                 className="p-2 border-4 border-black bg-white hover:bg-gray-100 font-black transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1 flex items-center gap-2"
@@ -278,16 +331,18 @@ export default function LoadingPanel({
                         {showDescriptionInput && tempSelectedStyle && (
                             <div className="w-[65%] animate-slide-in-right">
                                 <div className="flex flex-col h-full">
-                                    <textarea
-                                        value={userDescription}
-                                        onChange={(e) => setUserDescription(e.target.value)}
-                                        placeholder="Want something specific in your portfolio? Mention key projects, skills, or achievements you'd like highlighted... (Optional)"
-                                        className="w-full h-32 p-3 border-3 border-black font-mono text-sm focus:outline-none focus:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all resize-none"
-                                        maxLength={500}
-                                    />
-                                    <p className="text-xs text-gray-500 mt-1 mb-3">{userDescription.length}/500 characters</p>
+                                    <div className="relative">
+                                        <textarea
+                                            value={userDescription}
+                                            onChange={(e) => setUserDescription(e.target.value)}
+                                            placeholder="Want something specific in your portfolio? Mention key projects, skills, or achievements you'd like highlighted... (Optional)"
+                                            className="w-full h-32 p-3 pb-8 border-3 border-black font-mono text-sm focus:outline-none focus:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all resize-none"
+                                            maxLength={500}
+                                        />
+                                        <p className="absolute bottom-2 right-3 text-xs text-gray-500 font-mono">{userDescription.length}/500</p>
+                                    </div>
 
-                                    <div className="flex gap-3">
+                                    <div className="flex gap-3 mt-3">
                                         <button
                                             onClick={handleSkip}
                                             className="flex-1 border-3 border-black bg-[#4a90e2] text-white hover:bg-[#357abd] font-black px-4 py-2 transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-x-1 hover:translate-y-1 text-sm"
@@ -326,6 +381,23 @@ export default function LoadingPanel({
                                 <ReactMarkdown
                                     remarkPlugins={[remarkGfm]}
                                     rehypePlugins={[rehypeRaw]}
+                                    components={{
+                                        img: ({ node, ...props }) => (
+                                            <img
+                                                {...props}
+                                                loading="lazy"
+                                                style={{ display: 'inline-block', maxWidth: '100%' }}
+                                                onError={(e) => {
+                                                    // Fallback if image fails to load
+                                                    const target = e.target as HTMLImageElement;
+                                                    target.style.display = 'none';
+                                                }}
+                                            />
+                                        ),
+                                        a: ({ node, ...props }) => (
+                                            <a {...props} target="_blank" rel="noopener noreferrer" />
+                                        ),
+                                    }}
                                 >
                                     {finalMarkdown}
                                 </ReactMarkdown>
@@ -378,20 +450,25 @@ export default function LoadingPanel({
                                         return 'opacity-20';                    // Latest - 4 and older
                                     };
 
+                                    // Check if message contains Ghostwriter crafting text
+                                    const isGhostwriterCrafting = event.message.includes('Ghostwriter is crafting');
+
                                     return (
                                         <div
                                             key={events.length - index}
                                             className={`border-2 border-black p-3 font-mono text-sm transition-opacity duration-300 ${getOpacity(index)} ${event.type === 'error'
                                                 ? 'bg-[#ff6b6b] text-black'
-                                                : event.type.includes('complete')
-                                                    ? 'bg-[#4ecdc4] text-black'
-                                                    : event.type === 'progress'
-                                                        ? 'bg-[#ffe66d] text-black'
-                                                        : 'bg-white text-black'
+                                                : isGhostwriterCrafting
+                                                    ? 'bg-[#4a90e2] text-white font-bold'
+                                                    : event.type.includes('complete')
+                                                        ? 'bg-[#4ecdc4] text-black'
+                                                        : event.type === 'progress'
+                                                            ? 'bg-[#ffe66d] text-black'
+                                                            : 'bg-white text-black'
                                                 }`}
                                         >
                                             <div className="flex items-start gap-2">
-                                                <span className="text-black/40 text-xs mt-0.5">
+                                                <span className={`text-xs mt-0.5 ${isGhostwriterCrafting ? 'text-white/60' : 'text-black/40'}`}>
                                                     {event.timestamp && !isNaN(new Date(event.timestamp).getTime())
                                                         ? `[${new Date(event.timestamp).toLocaleTimeString()}]`
                                                         : ''}
@@ -454,39 +531,88 @@ export default function LoadingPanel({
 
             {/* Share Popup Modal */}
             {showShare && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowShare(false)}>
-                    <div className="border-4 border-black bg-white p-8 max-w-md w-full shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]" onClick={(e) => e.stopPropagation()}>
+                <div className="fixed inset-0 bg-black/20 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={() => setShowShare(false)}>
+                    <div className="border-4 border-black bg-white p-8 max-w-2xl w-full shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-between mb-6">
                             <h3 className="text-2xl font-black text-black flex items-center gap-2">
                                 <Share2 className="w-6 h-6" />
-                                Share GRWM
+                                Share Your README
                             </h3>
                             <button onClick={() => setShowShare(false)} className="text-2xl font-black hover:text-[#ff6b6b]">
                                 ✕
                             </button>
                         </div>
-                        <p className="font-mono text-sm text-black/70 mb-6">Tell your friends about this awesome tool!</p>
-                        <div className="space-y-3">
+
+                        {/* Screenshot Preview */}
+                        {screenshot && (
+                            <div className="mb-6 border-4 border-black overflow-hidden">
+                                <img src={screenshot} alt="Page Screenshot" className="w-full h-auto" />
+                            </div>
+                        )}
+
+                        <p className="font-mono text-sm text-black/70 mb-4 font-bold">Share on social media:</p>
+
+                        {/* Social Media Icon Buttons */}
+                        <div className="flex gap-3 mb-6 justify-center flex-wrap">
                             <button
                                 onClick={() => handleShare('twitter')}
-                                className="w-full px-6 py-4 border-4 border-black bg-[#1DA1F2] hover:bg-[#1a8cd8] font-black text-white transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1 flex items-center justify-center gap-3"
+                                className="p-4 border-4 border-black bg-[#1DA1F2] hover:bg-[#1a8cd8] transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1"
+                                title="Share on X (Twitter)"
                             >
-                                <Twitter className="w-5 h-5" />
-                                <span>Share on Twitter</span>
+                                <Twitter className="w-6 h-6 text-white" />
                             </button>
                             <button
                                 onClick={() => handleShare('linkedin')}
-                                className="w-full px-6 py-4 border-4 border-black bg-[#0077B5] hover:bg-[#006399] font-black text-white transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1 flex items-center justify-center gap-3"
+                                className="p-4 border-4 border-black bg-[#0077B5] hover:bg-[#006399] transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1"
+                                title="Share on LinkedIn"
                             >
-                                <Linkedin className="w-5 h-5" />
-                                <span>Share on LinkedIn</span>
+                                <Linkedin className="w-6 h-6 text-white" />
                             </button>
                             <button
-                                onClick={() => handleShare('copy')}
-                                className="w-full px-6 py-4 border-4 border-black bg-[#f0f0f0] hover:bg-[#e0e0e0] font-black text-black transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1 flex items-center justify-center gap-3"
+                                onClick={() => handleShare('reddit')}
+                                className="p-4 border-4 border-black bg-[#FF4500] hover:bg-[#e03d00] transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1"
+                                title="Share on Reddit"
+                            >
+                                <Share2 className="w-6 h-6 text-white" />
+                            </button>
+                            <button
+                                onClick={() => handleShare('email')}
+                                className="p-4 border-4 border-black bg-[#EA4335] hover:bg-[#d33b2c] transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1"
+                                title="Share via Email"
+                            >
+                                <Mail className="w-6 h-6 text-white" />
+                            </button>
+                            <button
+                                onClick={() => handleShare('whatsapp')}
+                                className="p-4 border-4 border-black bg-[#25D366] hover:bg-[#20bd5a] transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1"
+                                title="Share on WhatsApp"
+                            >
+                                <Send className="w-6 h-6 text-white" />
+                            </button>
+                            <button
+                                onClick={() => handleShare('instagram')}
+                                className="p-4 border-4 border-black bg-gradient-to-br from-[#833AB4] via-[#E1306C] to-[#F77737] hover:opacity-90 transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1"
+                                title="Share on Instagram"
+                            >
+                                <Share2 className="w-6 h-6 text-white" />
+                            </button>
+                        </div>
+
+                        {/* Copy Buttons */}
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => handleShare('copyImage')}
+                                className="flex-1 px-6 py-4 border-4 border-black bg-[#4ecdc4] hover:bg-[#3dbab1] font-black text-black transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1 flex items-center justify-center gap-2"
+                            >
+                                <Copy className="w-5 h-5" />
+                                <span>COPY IMAGE</span>
+                            </button>
+                            <button
+                                onClick={() => handleShare('copyLink')}
+                                className="flex-1 px-6 py-4 border-4 border-black bg-[#ffe66d] hover:bg-[#ffd93d] font-black text-black transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1 flex items-center justify-center gap-2"
                             >
                                 <Link className="w-5 h-5" />
-                                <span>Copy Link</span>
+                                <span>COPY LINK</span>
                             </button>
                         </div>
                     </div>

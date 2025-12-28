@@ -11,4 +11,7 @@ dependencies = [
     "langchain>=0.3.0",
     "langchain-google-genai>=2.0.0",
     "langchain-core>=0.3.0",
+    "fastapi>=0.128.0",
+    "uvicorn>=0.40.0",
+    "pydantic>=2.12.5",
 ]

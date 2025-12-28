@@ -7,6 +7,8 @@ import os
 import asyncio
 from typing import TypedDict, Annotated, Optional, List, Dict, Any
 from operator import add
+from concurrent.futures import ThreadPoolExecutor
+import threading
 
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -189,6 +191,10 @@ class DetectiveAgent:
         Synchronous wrapper around async investigation
         """
         username = state["username"]
+        print(f"\n{'='*60}")
+        print(f"🔍 DETECTIVE AGENT CALLED")
+        print(f"Username: {username}")
+        print(f"{'='*60}\n")
 
         # Check if we already have data (for revision requests)
         if state.get("raw_data") and not state.get("revision_instructions"):
@@ -196,11 +202,28 @@ class DetectiveAgent:
             return state
 
         try:
-            # Run async investigation
-            raw_data = asyncio.run(self.investigate_parallel(username))
+            print(f"🔧 Running async investigation in a separate thread...")
+
+            # Run async code in a new thread with its own event loop
+            def run_in_thread():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    return loop.run_until_complete(self.investigate_parallel(username))
+                finally:
+                    loop.close()
+
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(run_in_thread)
+                raw_data = future.result()
+
+            print(f"✅ Investigation completed successfully!")
+            print(
+                f"📊 Data collected: {len(raw_data.get('repositories', []))} repos")
 
             # Update state
-            return {
+            print(f"\n🔄 Updating state with detective data...")
+            new_state = {
                 **state,
                 "raw_data": raw_data,
                 "intermediate_results": {
@@ -214,8 +237,14 @@ class DetectiveAgent:
                     )
                 ],
             }
+            print(f"✅ State updated, returning to graph")
+            print(f"{'='*60}\n")
+            return new_state
 
         except Exception as e:
+            print(f"\n❌ DETECTIVE ERROR: {str(e)}")
+            import traceback
+            print(f"Traceback:\n{traceback.format_exc()}")
             error_msg = f"Failed to fetch data for @{username}: {str(e)}"
             return {
                 **state,

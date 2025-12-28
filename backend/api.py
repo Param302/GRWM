@@ -362,7 +362,7 @@ async def continue_with_ghostwriter(session_id: str, username: str, tone: str, s
                 # Update state with selected style
                 state_with_style = {
                     **stored_state,
-                    "preferences": {"tone": tone, "style": style}
+                    "user_preferences": {"tone": tone, "style": style}
                 }
 
                 # Run ghostwriter directly (not through graph)

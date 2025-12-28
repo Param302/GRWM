@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { ArrowLeft } from 'lucide-react';
 import ProfileCard from './ProfileCard';
 import StyleSelector from './StyleSelector';
 import LoadingPanel from './LoadingPanel';
@@ -212,8 +213,9 @@ export default function GenerationFlow({ username, tone, onBack }: GenerationFlo
                         <h2 className="text-2xl font-black tracking-tight text-black">PROFILE</h2>
                         <button
                             onClick={onBack}
-                            className="px-4 py-2 border-2 border-black bg-white hover:bg-black hover:text-white font-mono font-bold transition-all text-sm"
+                            className="px-4 py-2 border-2 border-black bg-white hover:bg-black hover:text-white font-mono font-bold transition-all text-sm flex items-center gap-2"
                         >
+                            <ArrowLeft className="w-4 h-4" />
                             BACK
                         </button>
                     </div>

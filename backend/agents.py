@@ -1100,12 +1100,15 @@ class GhostwriterAgent:
         primary_lang = analysis["language_dominance"]["primary_language"]
         key_projects = analysis["key_projects"]
 
-        # Build system prompt based on tone
+        # Build system prompt based on tone and style
         tone_instructions = self._get_tone_instructions(tone)
+        style_instructions = self._get_style_instructions(style)
 
         system_prompt = f"""You are an expert README writer creating a GitHub profile README for {username}.
 
 {tone_instructions}
+
+{style_instructions}
 
 CRITICAL RULES:
 1. Use REAL data provided - NO placeholders or made-up content
@@ -1225,6 +1228,40 @@ TONE: Creative and unique
 """,
         }
         return instructions.get(tone, instructions["professional"])
+
+    def _get_style_instructions(self, style: str) -> str:
+        """Get writing instructions based on style (structure/format)"""
+        instructions = {
+            "professional": """
+STYLE: Professional and Structured
+- Traditional sections: About, Skills, Projects, Stats
+- Business-appropriate formatting
+- Clear hierarchy with headings
+- Comprehensive but organized
+""",
+            "creative": """
+STYLE: Creative and Expressive
+- Unique section names and structure
+- Storytelling approach
+- Visual elements and custom badges
+- Personality-driven layout
+""",
+            "minimal": """
+STYLE: Minimal and Clean
+- Essential sections only: About, Top Skills, Contact
+- No excessive formatting or badges
+- Plenty of whitespace
+- Focus on content, not decoration
+""",
+            "detailed": """
+STYLE: Detailed and Comprehensive
+- Extensive sections covering everything
+- Multiple subsections with detailed explanations
+- Include all projects, skills, and experiences
+- Rich with stats, badges, and visualizations
+""",
+        }
+        return instructions.get(style, instructions["professional"])
 
     def _post_process_markdown(self, markdown: str, username: str, primary_lang: str) -> str:
         """

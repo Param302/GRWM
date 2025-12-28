@@ -60,6 +60,47 @@ async def health_check():
     }
 
 
+@app.post("/api/select-style")
+async def select_style(request: dict, background_tasks: BackgroundTasks):
+    """
+    User selects a README style after CTO analysis
+    This triggers the Ghostwriter agent to start
+    """
+    session_id = request.get("session_id")
+    style = request.get("style")
+
+    if not session_id or not style:
+        raise HTTPException(
+            status_code=400, detail="session_id and style are required")
+
+    if session_id not in active_sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Update session with selected style
+    active_sessions[session_id]["preferences"]["style"] = style
+    active_sessions[session_id]["style_selected"] = True
+
+    print(f"🎨 Style selected for session {session_id}: {style}")
+
+    # Continue the generation with ghostwriter
+    username = active_sessions[session_id]["username"]
+    tone = active_sessions[session_id]["preferences"]["tone"]
+
+    background_tasks.add_task(
+        continue_with_ghostwriter,
+        session_id,
+        username,
+        tone,
+        style
+    )
+
+    return {
+        "session_id": session_id,
+        "style": style,
+        "message": "Style selected, continuing generation..."
+    }
+
+
 @app.post("/api/generate")
 async def start_generation(request: GenerateRequest, background_tasks: BackgroundTasks):
     """
@@ -235,13 +276,16 @@ async def run_agent(session_id: str, username: str, tone: str, style: str):
                             })
                             await asyncio.sleep(0.2)
                         elif event_data.get('type') == 'cto_complete':
-                            print(f"🎯 CTO done, signaling Ghostwriter start...")
+                            print(f"🎯 CTO done, waiting for user to select style...")
+                            # Store the final state for later use by Ghostwriter
+                            active_sessions[session_id]["final_state"] = state
                             await emit_event({
-                                "type": "ghostwriter_progress",
-                                "stage": "ghostwriter",
-                                "message": "✍️ Ghostwriter is crafting your README...",
+                                "type": "awaiting_style_selection",
+                                "stage": "cto",
+                                "message": "⏸️ Analysis complete! Choose your README style to continue...",
                                 "timestamp": datetime.now().isoformat()
                             })
+                            # Stop here - don't continue to Ghostwriter
                             await asyncio.sleep(0.2)
 
             except thread_queue.Empty:
@@ -249,13 +293,9 @@ async def run_agent(session_id: str, username: str, tone: str, style: str):
                 await asyncio.sleep(0.01)
                 continue
 
-        # Final completion event
-        await emit_event({
-            "type": "complete",
-            "message": "README generation complete! 🎉",
-            "timestamp": datetime.now().isoformat()
-        })
-        print(f"🎉 Session completed\n")
+        # Don't send completion event here - graph stops after CTO
+        # Completion event will be sent after Ghostwriter finishes
+        print(f"🎯 Analysis phase completed, waiting for style selection\n")
 
     except Exception as e:
         print(f"\n❌ ERROR in run_agent: {str(e)}")
@@ -271,6 +311,124 @@ async def run_agent(session_id: str, username: str, tone: str, style: str):
         active_sessions[session_id]["events"].append(error_event)
         await event_q.put(error_event)
         print(f"💾 Error event stored in session\n")
+
+
+async def continue_with_ghostwriter(session_id: str, username: str, tone: str, style: str):
+    """
+    Run Ghostwriter agent manually (not through graph) after style selection
+    Uses the stored state from CTO completion
+    """
+    import queue as thread_queue
+    from threading import Thread
+
+    event_q = event_queues.get(session_id)
+    if not event_q:
+        print(f"❌ No queue found for session {session_id}")
+        return
+
+    async def emit_event(event_data: Dict):
+        """Helper to emit events to both storage and queue"""
+        active_sessions[session_id]["events"].append(event_data)
+        await event_q.put(event_data)
+        print(f"   └─ 📤 Event emitted: {event_data.get('type', 'unknown')}")
+
+    try:
+        # Emit starting message
+        await emit_event({
+            "type": "ghostwriter_progress",
+            "stage": "ghostwriter",
+            "message": f"✍️ Ghostwriter is crafting your {style} README...",
+            "timestamp": datetime.now().isoformat()
+        })
+
+        # Get the stored state from CTO completion
+        stored_state = active_sessions[session_id].get("final_state")
+        if not stored_state:
+            raise Exception("No stored state found - CTO must complete first")
+
+        # Create a thread-safe queue for sync/async communication
+        sync_queue = thread_queue.Queue()
+
+        def run_ghostwriter_in_thread():
+            """Run ghostwriter in separate thread"""
+            try:
+                from agents import GhostwriterAgent
+
+                print(f"🔧 Ghostwriter thread started")
+
+                # Initialize ghostwriter
+                ghostwriter = GhostwriterAgent()
+
+                # Update state with selected style
+                state_with_style = {
+                    **stored_state,
+                    "preferences": {"tone": tone, "style": style}
+                }
+
+                # Run ghostwriter directly (not through graph)
+                result_state = ghostwriter(state_with_style)
+
+                # Put result in queue
+                sync_queue.put(('event', 'ghostwriter', result_state))
+                sync_queue.put(('done', None, None))
+                print(f"✅ Ghostwriter thread completed")
+
+            except Exception as e:
+                print(f"❌ Ghostwriter thread error: {e}")
+                import traceback
+                print(f"Thread traceback:\n{traceback.format_exc()}")
+                sync_queue.put(('error', str(e), None))
+
+        # Start ghostwriter in separate thread
+        ghost_thread = Thread(target=run_ghostwriter_in_thread, daemon=True)
+        ghost_thread.start()
+        print(f"🚀 Ghostwriter thread started")
+
+        # Process events from thread
+        while True:
+            try:
+                loop = asyncio.get_event_loop()
+                msg_type, event_name, state = await loop.run_in_executor(
+                    None, sync_queue.get, True, 0.01
+                )
+
+                if msg_type == 'done':
+                    print(f"✅ Received completion from ghostwriter")
+                    break
+                elif msg_type == 'error':
+                    raise Exception(f"Ghostwriter error: {event_name}")
+                elif msg_type == 'event':
+                    print(f"📥 Received event from ghostwriter: {event_name}")
+                    event_data = transform_event(event_name, state, username)
+                    if event_data:
+                        await emit_event(event_data)
+                        await asyncio.sleep(0.3)
+
+            except thread_queue.Empty:
+                await asyncio.sleep(0.01)
+                continue
+
+        # Final completion
+        await emit_event({
+            "type": "done",
+            "message": "README generation complete! 🎉",
+            "timestamp": datetime.now().isoformat()
+        })
+        active_sessions[session_id]["status"] = "completed"
+        print(f"🎉 Ghostwriter completed\n")
+
+    except Exception as e:
+        print(f"\n❌ ERROR in continue_with_ghostwriter: {str(e)}")
+        import traceback
+        print(f"Traceback:\n{traceback.format_exc()}")
+
+        active_sessions[session_id]["status"] = "error"
+        error_event = {
+            "type": "error",
+            "message": f"Error: {str(e)}",
+            "timestamp": datetime.now().isoformat()
+        }
+        await event_q.put(error_event)
 
 
 def transform_event(event_name: str, state: Dict, username: str) -> Optional[Dict]:
@@ -291,6 +449,7 @@ def transform_event(event_name: str, state: Dict, username: str) -> Optional[Dic
         if state.get("raw_data"):
             raw_data = state["raw_data"]
             profile = raw_data.get("profile", {})
+            stats = raw_data.get("stats", {})
 
             return {
                 "type": "detective_complete",
@@ -298,17 +457,17 @@ def transform_event(event_name: str, state: Dict, username: str) -> Optional[Dic
                 "data": {
                     "profile": {
                         "name": profile.get("name", username),
-                        "username": username,
+                        "username": profile.get("username", username),
                         "bio": profile.get("bio", ""),
                         "avatar_url": profile.get("avatar_url", ""),
                         "location": profile.get("location", ""),
                         "company": profile.get("company", ""),
                         "email": profile.get("email", ""),
-                        "twitter": profile.get("twitter_username", ""),
-                        "website": profile.get("blog", ""),
-                        "public_repos": profile.get("public_repos", 0),
-                        "followers": profile.get("followers", 0),
-                        "following": profile.get("following", 0),
+                        "twitter": profile.get("twitter", ""),
+                        "website": profile.get("website", ""),
+                        "public_repos": stats.get("total_repos", 0),
+                        "followers": stats.get("followers", 0),
+                        "following": stats.get("following", 0),
                     },
                     "stats": {
                         "repos_count": len(raw_data.get("repositories", [])),
@@ -344,14 +503,22 @@ def transform_event(event_name: str, state: Dict, username: str) -> Optional[Dic
         if state.get("analysis"):
             analysis = state["analysis"]
 
+            # Extract tech stack from skill domains
+            tech_stack = []
+            if analysis.get("skill_domains", {}).get("all_skills"):
+                # Top 10
+                tech_stack = analysis["skill_domains"]["all_skills"][:10]
+
             return {
                 "type": "cto_complete",
                 "stage": "cto",
                 "data": {
                     "archetype": analysis.get("developer_archetype", {}).get("full_title", "Unknown"),
+                    "profile_headline": analysis.get("profile_headline", ""),
                     "grind_score": analysis.get("grind_score", {}),
                     "primary_language": analysis.get("language_dominance", {}).get("primary_language", {}),
                     "top_languages": analysis.get("language_dominance", {}).get("top_5_languages", []),
+                    "tech_stack": tech_stack,
                     "key_projects": analysis.get("key_projects", [])[:3],
                     "impact_metrics": analysis.get("impact_metrics", {}),
                     "tech_diversity": analysis.get("tech_diversity", {}),

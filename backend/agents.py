@@ -365,6 +365,18 @@ class CTOAgent:
             repositories
         )
 
+        # 8. Profile Headline
+        msg = "✨ Crafting your profile headline..."
+        print(f"  ├─ {msg}")
+        if self.progress_callback:
+            self.progress_callback("cto", msg)
+        profile_headline = self._generate_profile_headline(
+            archetype,
+            language_analysis,
+            skill_mapping,
+            impact_metrics
+        )
+
         print(
             f"  └─ ✅ Analysis complete! Verdict: {skill_mapping['personality_comment']}")
 
@@ -376,6 +388,7 @@ class CTOAgent:
             "key_projects": key_projects,
             "developer_archetype": archetype,
             "impact_metrics": impact_metrics,
+            "profile_headline": profile_headline,
             "summary": self._generate_summary(
                 archetype,
                 grind_score,
@@ -858,6 +871,54 @@ class CTOAgent:
 
         return summary
 
+    def _generate_profile_headline(
+        self,
+        archetype: Dict,
+        language_analysis: Dict,
+        skill_mapping: Dict,
+        impact_metrics: Dict
+    ) -> str:
+        """
+        Generate a catchy profile headline (max 30 words) that user can use in their profile
+        """
+        primary_lang = language_analysis["primary_language"]
+        lang_name = primary_lang["name"] if primary_lang else "Full-Stack"
+
+        # Get top domain
+        top_domain = "Developer"
+        if skill_mapping["primary_domains"]:
+            domain_map = {
+                "Frontend Development": "Frontend",
+                "Backend Development": "Backend",
+                "Data Science & ML": "Data Scientist",
+                "AI & Machine Learning": "AI/ML Engineer",
+                "DevOps & Cloud": "DevOps",
+                "Mobile Development": "Mobile",
+                "Web3 & Blockchain": "Web3",
+                "Game Development": "Game Dev",
+                "Cybersecurity": "Security",
+                "Data Structures & Algorithms": "Problem Solver"
+            }
+            top_domain = domain_map.get(
+                skill_mapping["primary_domains"][0]["name"], "Developer")
+
+        # Get stars for credibility
+        stars = impact_metrics.get("total_stars", 0)
+
+        # Generate headline variations based on archetype and stats
+        archetype_name = archetype.get("archetype_name", "Developer")
+
+        headlines = [
+            f"{lang_name} {top_domain} | Building impactful solutions | {stars}+ ⭐ on GitHub",
+            f"{archetype_name} specializing in {lang_name} | {top_domain} with {stars}+ stars",
+            f"{lang_name} {top_domain} | Open source contributor | {stars} stars earned",
+            f"Passionate {top_domain} | {lang_name} expert | {stars}+ GitHub stars",
+            f"{archetype_name} | {lang_name} enthusiast | Creating value through code"
+        ]
+
+        # Pick the best one (first one is most complete)
+        return headlines[0]
+
     def __call__(self, state: AgentState) -> AgentState:
         """
         LangGraph node function
@@ -1255,6 +1316,9 @@ def route_next_step(state: AgentState) -> str:
     elif state.get("analysis") is None:
         return "cto"
     elif state.get("final_markdown") is None:
+        # Wait for style selection before proceeding to ghostwriter
+        if not state.get("style_selected"):
+            return END  # Pause here until style is selected
         return "ghostwriter"
     else:
         return END
@@ -1264,10 +1328,10 @@ def route_next_step(state: AgentState) -> str:
 # GRAPH BUILDER
 # ============================================================
 
-def create_detective_graph(progress_callback=None) -> StateGraph:
+def create_analysis_graph(progress_callback=None) -> StateGraph:
     """
-    Create the complete LangGraph with Detective, CTO, and Ghostwriter agents
-    Full pipeline: Data Collection → Analysis → README Generation
+    Create graph with only Detective and CTO agents
+    Stops after analysis - Ghostwriter runs separately
     """
     # Initialize memory for checkpointing
     memory = MemorySaver()
@@ -1282,56 +1346,67 @@ def create_detective_graph(progress_callback=None) -> StateGraph:
     detective = DetectiveAgent(
         GITHUB_TOKEN, progress_callback=progress_callback)
     cto = CTOAgent(progress_callback=progress_callback)
-    ghostwriter = GhostwriterAgent()
 
-    # Add nodes
+    # Add nodes - NO Ghostwriter
     workflow.add_node("detective", detective)
     workflow.add_node("cto", cto)
-    workflow.add_node("ghostwriter", ghostwriter)
 
-    # Add conditional routing (deterministic - no LLM)
+    # Simplified routing for Detective → CTO → END
+    def route_analysis(state: AgentState) -> str:
+        if state.get("error"):
+            retry_count = state.get("retry_count", 0)
+            if retry_count >= 3:
+                return END
+            if state.get("raw_data") is None:
+                return "detective"
+            elif state.get("analysis") is None:
+                return "cto"
+            else:
+                return END
+
+        if state.get("raw_data") is None:
+            return "detective"
+        elif state.get("analysis") is None:
+            return "cto"
+        else:
+            return END  # Stop after CTO
+
+    # Add conditional routing
     workflow.set_conditional_entry_point(
-        route_next_step,
+        route_analysis,
         {
             "detective": "detective",
             "cto": "cto",
-            "ghostwriter": "ghostwriter",
             END: END,
         }
     )
 
     workflow.add_conditional_edges(
         "detective",
-        route_next_step,
+        route_analysis,
         {
-            "detective": "detective",  # Retry on error
-            "cto": "cto",  # Normal flow
+            "detective": "detective",
+            "cto": "cto",
             END: END,
         }
     )
 
     workflow.add_conditional_edges(
         "cto",
-        route_next_step,
+        route_analysis,
         {
-            "ghostwriter": "ghostwriter",  # Flow to Ghostwriter
-            END: END,
-        }
-    )
-
-    workflow.add_conditional_edges(
-        "ghostwriter",
-        route_next_step,
-        {
-            "ghostwriter": "ghostwriter",  # Allow revisions
-            "detective": "detective",  # Retry on error
-            "cto": "cto",  # Fallback if analysis missing
-            END: END,
+            END: END,  # Always end after CTO
         }
     )
 
     # Compile with checkpointing
     return workflow.compile(checkpointer=memory)
+
+
+# Keep the old function name for backward compatibility
+def create_detective_graph(progress_callback=None) -> StateGraph:
+    """Alias for create_analysis_graph"""
+    return create_analysis_graph(progress_callback)
 
 
 # ============================================================

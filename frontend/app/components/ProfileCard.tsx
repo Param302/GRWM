@@ -78,42 +78,6 @@ export default function ProfileCard({ profile, analysis }: ProfileCardProps) {
                     </div>
                 )}
             </div>
-
-            {/* Analysis Results */}
-            {analysis && (
-                <div className="space-y-3">
-                    {/* Archetype */}
-                    <div className="border-4 border-black bg-[#4ecdc4] p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                        <p className="font-mono text-xs font-bold text-black/70 mb-1">ARCHETYPE</p>
-                        <p className="font-black text-base text-black">{analysis.archetype}</p>
-                    </div>
-
-                    {/* Grind Score */}
-                    <div className="border-4 border-black bg-[#ff6b6b] p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                        <p className="font-mono text-xs font-bold text-black/70 mb-1">GRIND SCORE</p>
-                        <div className="flex items-center gap-2">
-                            <span className="text-2xl">{analysis.grind_score.emoji}</span>
-                            <div>
-                                <p className="font-black text-base text-black">{analysis.grind_score.label}</p>
-                                <p className="font-mono text-sm text-black/70">{analysis.grind_score.score.toFixed(1)}/100</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Primary Language */}
-                    {analysis.primary_language && (
-                        <div className="border-4 border-black bg-[#ffe66d] p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                            <p className="font-mono text-xs font-bold text-black/70 mb-1">PRIMARY LANGUAGE</p>
-                            <p className="font-black text-base text-black">
-                                {analysis.primary_language.name}
-                                <span className="ml-2 font-mono text-sm text-black/70">
-                                    {analysis.primary_language.percentage.toFixed(1)}%
-                                </span>
-                            </p>
-                        </div>
-                    )}
-                </div>
-            )}
         </div>
     );
 }

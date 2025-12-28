@@ -134,9 +134,10 @@ async def run_agent(session_id: str, username: str, tone: str, style: str):
         print(f"⏳ Waiting 0.5 seconds for SSE connection...")
         await asyncio.sleep(0.5)
 
-        # Send initial event
+        # Send initial event with detective stage
         await emit_event({
             "type": "init",
+            "stage": "detective",
             "message": f"🚀 Starting investigation for @{username}...",
             "timestamp": datetime.now().isoformat()
         })
@@ -184,12 +185,12 @@ async def run_agent(session_id: str, username: str, tone: str, style: str):
 
         # Process events as they come from the thread
         while True:
-            # Check the thread queue (non-blocking with timeout)
+            # Check the thread queue (blocking with timeout)
             try:
                 # Use run_in_executor to make queue.get() non-blocking
                 loop = asyncio.get_event_loop()
                 msg_type, event_name, state = await loop.run_in_executor(
-                    None, sync_queue.get, True, 0.1  # block=True, timeout=0.1
+                    None, sync_queue.get, True, 0.01  # block=True, timeout=0.01s
                 )
 
                 if msg_type == 'done':
@@ -203,12 +204,33 @@ async def run_agent(session_id: str, username: str, tone: str, style: str):
                     event_data = transform_event(event_name, state, username)
                     if event_data:
                         await emit_event(event_data)
-                        # Small delay for smooth UX
-                        await asyncio.sleep(0.05)
+
+                        # CRITICAL: Give frontend time to process this event before next one
+                        await asyncio.sleep(0.3)
+
+                        # Emit progress event for next stage when current stage completes
+                        if event_data.get('type') == 'detective_complete':
+                            print(f"🎯 Detective done, signaling CTO start...")
+                            await emit_event({
+                                "type": "cto_progress",
+                                "stage": "cto",
+                                "message": "🧠 CTO is analyzing your tech stack...",
+                                "timestamp": datetime.now().isoformat()
+                            })
+                            await asyncio.sleep(0.2)
+                        elif event_data.get('type') == 'cto_complete':
+                            print(f"🎯 CTO done, signaling Ghostwriter start...")
+                            await emit_event({
+                                "type": "ghostwriter_progress",
+                                "stage": "ghostwriter",
+                                "message": "✍️ Ghostwriter is crafting your README...",
+                                "timestamp": datetime.now().isoformat()
+                            })
+                            await asyncio.sleep(0.2)
 
             except thread_queue.Empty:
-                # No event yet, continue waiting
-                await asyncio.sleep(0.05)
+                # No event yet, continue waiting (very short sleep)
+                await asyncio.sleep(0.01)
                 continue
 
         # Final completion event
@@ -414,9 +436,6 @@ async def stream_events(session_id: str):
                     print(
                         f"📤 Sending event to client: {event.get('type', 'unknown')}")
                     yield f"data: {json.dumps(event)}\n\n"
-
-                    # Small delay for smooth frontend animation
-                    await asyncio.sleep(0.05)
 
                     # Check if this is a completion event
                     if event.get("type") == "complete" or event.get("type") == "error":

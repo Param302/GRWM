@@ -214,7 +214,7 @@ export default function GenerationFlow({ username, tone, onBack }: GenerationFlo
             {/* Right Panel - 60% */}
             <div className="flex-1 flex flex-col">
                 {loading ? (
-                    <LoadingPanel events={events} currentStage={currentStage} />
+                    <LoadingPanel events={events} currentStage={currentStage} analysisData={analysisData} />
                 ) : (
                     <ReadmePreview markdown={finalMarkdown} username={username} />
                 )}

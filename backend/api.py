@@ -8,6 +8,7 @@ import uuid
 import json
 from typing import Dict, Optional, AsyncGenerator
 from datetime import datetime
+from asyncio import Queue
 
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.responses import StreamingResponse
@@ -30,8 +31,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# In-memory session storage (use Redis in production)
+# In-memory session storage with event queues (use Redis in production)
 active_sessions: Dict[str, Dict] = {}
+event_queues: Dict[str, Queue] = {}
 
 
 class GenerateRequest(BaseModel):
@@ -82,6 +84,10 @@ async def start_generation(request: GenerateRequest, background_tasks: Backgroun
             "style": request.style
         }
     }
+
+    # Create event queue for real-time streaming
+    event_queues[session_id] = Queue()
+
     print(f"✅ Session initialized: {session_id}")
 
     # Start agent in background
@@ -104,58 +110,114 @@ async def start_generation(request: GenerateRequest, background_tasks: Backgroun
 
 async def run_agent(session_id: str, username: str, tone: str, style: str):
     """
-    Run the LangGraph agent and store events in session
+    Run the LangGraph agent and emit events in real-time
+    Uses threading to prevent blocking the async event loop
     """
+    import queue as thread_queue
+    from threading import Thread
+
+    event_q = event_queues.get(session_id)
+    if not event_q:
+        print(f"❌ No queue found for session {session_id}")
+        return
+
+    async def emit_event(event_data: Dict):
+        """Helper to emit events to both storage and queue"""
+        active_sessions[session_id]["events"].append(event_data)
+        await event_q.put(event_data)
+        print(f"   └─ 📤 Event emitted: {event_data.get('type', 'unknown')}")
+
     try:
         active_sessions[session_id]["status"] = "running"
 
+        # Wait for SSE connection to establish
+        print(f"⏳ Waiting 0.5 seconds for SSE connection...")
+        await asyncio.sleep(0.5)
+
         # Send initial event
-        active_sessions[session_id]["events"].append({
+        await emit_event({
             "type": "init",
-            "message": f"Starting investigation for @{username}...",
+            "message": f"🚀 Starting investigation for @{username}...",
             "timestamp": datetime.now().isoformat()
         })
 
-        # Create graph
-        app_graph = create_detective_graph()
-        initial_state = create_initial_state(
-            username,
-            preferences={"tone": tone, "style": style}
-        )
+        # Create a thread-safe queue for communication between thread and async
+        sync_queue = thread_queue.Queue()
 
-        config = {
-            "configurable": {"thread_id": session_id},
-            "recursion_limit": 15
-        }
+        def run_graph_in_thread():
+            """Run LangGraph in a separate thread and push events to queue"""
+            try:
+                print(f"🔧 Thread started: Creating LangGraph...")
+                app_graph = create_detective_graph()
+                initial_state = create_initial_state(
+                    username,
+                    preferences={"tone": tone, "style": style}
+                )
 
-        # Stream events from graph
-        for event in app_graph.stream(initial_state, config):
-            event_name = list(event.keys())[0]
-            state = event[event_name]
-            print(f"   └─ Event type: {event_name}")
+                config = {
+                    "configurable": {"thread_id": session_id},
+                    "recursion_limit": 15
+                }
 
-            # Transform event to frontend-friendly format
-            print(f"   └─ Transforming event for frontend...")
-            event_data = transform_event(event_name, state, username)
+                print(f"🔧 Thread: Starting graph stream...")
+                for event in app_graph.stream(initial_state, config):
+                    event_name = list(event.keys())[0]
+                    state = event[event_name]
+                    print(f"   └─ 🎯 Thread: Graph event: {event_name}")
+                    # Put event in thread-safe queue
+                    sync_queue.put(('event', event_name, state))
 
-            if event_data:
-                print(
-                    f"   └─ ✅ Event data created: {event_data.get('type', 'unknown')}")
-                # Store event
-                active_sessions[session_id]["events"].append(event_data)
-                print(
-                    f"   └─ 📤 Event stored in session (total: {len(active_sessions[session_id]['events'])})")
+                # Signal completion
+                sync_queue.put(('done', None, None))
+                print(f"✅ Thread: Graph completed")
 
-                # Small delay to simulate streaming effect
-                await asyncio.sleep(0.2)
-            else:
-                print(f"   └─ ⚠️ No event data returned from transform")
-        active_sessions[session_id]["events"].append({
+            except Exception as e:
+                print(f"❌ Thread error: {e}")
+                import traceback
+                print(f"Thread traceback:\n{traceback.format_exc()}")
+                sync_queue.put(('error', str(e), None))
+
+        # Start the graph in a separate thread
+        graph_thread = Thread(target=run_graph_in_thread, daemon=True)
+        graph_thread.start()
+        print(f"🚀 Graph thread started, waiting for events...")
+
+        # Process events as they come from the thread
+        while True:
+            # Check the thread queue (non-blocking with timeout)
+            try:
+                # Use run_in_executor to make queue.get() non-blocking
+                loop = asyncio.get_event_loop()
+                msg_type, event_name, state = await loop.run_in_executor(
+                    None, sync_queue.get, True, 0.1  # block=True, timeout=0.1
+                )
+
+                if msg_type == 'done':
+                    print(f"✅ Received completion signal from graph")
+                    break
+                elif msg_type == 'error':
+                    raise Exception(f"Graph error: {event_name}")
+                elif msg_type == 'event':
+                    print(f"📥 Received event from graph: {event_name}")
+                    # Transform and emit immediately
+                    event_data = transform_event(event_name, state, username)
+                    if event_data:
+                        await emit_event(event_data)
+                        # Small delay for smooth UX
+                        await asyncio.sleep(0.05)
+
+            except thread_queue.Empty:
+                # No event yet, continue waiting
+                await asyncio.sleep(0.05)
+                continue
+
+        # Final completion event
+        await emit_event({
             "type": "complete",
             "message": "README generation complete! 🎉",
             "timestamp": datetime.now().isoformat()
         })
-        print(f"🎉 Session marked as completed\n")
+        print(f"🎉 Session completed\n")
 
     except Exception as e:
         print(f"\n❌ ERROR in run_agent: {str(e)}")
@@ -163,11 +225,13 @@ async def run_agent(session_id: str, username: str, tone: str, style: str):
         print(f"Traceback:\n{traceback.format_exc()}")
 
         active_sessions[session_id]["status"] = "error"
-        active_sessions[session_id]["events"].append({
+        error_event = {
             "type": "error",
             "message": f"Error: {str(e)}",
             "timestamp": datetime.now().isoformat()
-        })
+        }
+        active_sessions[session_id]["events"].append(error_event)
+        await event_q.put(error_event)
         print(f"💾 Error event stored in session\n")
 
 
@@ -311,54 +375,68 @@ async def stream_events(session_id: str):
     print(f"\n{'='*60}")
     print(f"🌊 SSE STREAM REQUESTED")
     print(f"Session ID: {session_id}")
+
+    # Check how long since session was created
+    if session_id in active_sessions:
+        created_at = datetime.fromisoformat(
+            active_sessions[session_id]["created_at"])
+        elapsed = (datetime.now() - created_at).total_seconds()
+        print(f"⏱️  Time since session created: {elapsed:.2f}s")
+        print(
+            f"📊 Events in queue: {event_queues[session_id].qsize() if session_id in event_queues else 0}")
     print(f"{'='*60}\n")
 
     async def event_generator() -> AsyncGenerator[str, None]:
-        """Generate SSE events"""
+        """Generate SSE events from queue in real-time"""
 
         if session_id not in active_sessions:
             print(f"❌ Session not found: {session_id}")
             yield f"data: {json.dumps({'type': 'error', 'message': 'Session not found'})}\n\n"
             return
 
-        print(f"✅ Session found, starting event streaming...")
+        queue = event_queues.get(session_id)
+        if not queue:
+            print(f"❌ No queue found for session: {session_id}")
+            yield f"data: {json.dumps({'type': 'error', 'message': 'No event queue found'})}\n\n"
+            return
 
-        last_event_idx = 0
-        max_wait_time = 180  # 3 minutes timeout
-        start_time = datetime.now()
+        print(f"✅ Session and queue found, starting real-time event streaming...")
 
-        # Stream events until completion
-        while True:
-            # Check timeout
-            elapsed = (datetime.now() - start_time).total_seconds()
-            if elapsed > max_wait_time:
-                yield f"data: {json.dumps({'type': 'timeout', 'message': 'Session timeout'})}\n\n"
-                break
+        # Send a keepalive comment to establish connection
+        yield ": connected\n\n"
 
-            session = active_sessions[session_id]
-            events = session["events"]
-
-            # Send new events
-            if len(events) > last_event_idx:
-                new_events = events[last_event_idx:]
-                print(f"📤 Sending {len(new_events)} new events to client")
-                for i, event in enumerate(new_events):
+        # Stream events from queue in real-time
+        try:
+            while True:
+                # Wait for next event from queue with timeout
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=60.0)
                     print(
-                        f"   └─ Event {last_event_idx + i + 1}: {event.get('type', 'unknown')}")
+                        f"📤 Sending event to client: {event.get('type', 'unknown')}")
                     yield f"data: {json.dumps(event)}\n\n"
-                last_event_idx = len(events)
 
-            # Check if done
-            if session["status"] in ["completed", "error"]:
-                # Send final status
-                yield f"data: {json.dumps({'type': 'done', 'status': session['status']})}\n\n"
+                    # Small delay for smooth frontend animation
+                    await asyncio.sleep(0.05)
 
-                # Cleanup session after 5 minutes
-                asyncio.create_task(cleanup_session(session_id, delay=300))
-                break
+                    # Check if this is a completion event
+                    if event.get("type") == "complete" or event.get("type") == "error":
+                        print(
+                            f"🏁 Stream ending due to {event.get('type')} event")
+                        yield f"data: {json.dumps({'type': 'done', 'status': event.get('type')})}\n\n"
 
-            # Wait before checking again
-            await asyncio.sleep(0.3)
+                        # Cleanup session after 5 minutes
+                        asyncio.create_task(
+                            cleanup_session(session_id, delay=300))
+                        break
+
+                except asyncio.TimeoutError:
+                    # Send keepalive if no events for 60s
+                    yield ": keepalive\n\n"
+                    print("💓 Sent keepalive")
+
+        except Exception as e:
+            print(f"❌ Error in event generator: {str(e)}")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
     return StreamingResponse(
         event_generator(),
@@ -372,11 +450,14 @@ async def stream_events(session_id: str):
 
 
 async def cleanup_session(session_id: str, delay: int = 300):
-    """Cleanup session after delay"""
+    """Cleanup session and queue after delay"""
     await asyncio.sleep(delay)
     if session_id in active_sessions:
         del active_sessions[session_id]
-        print(f"Cleaned up session: {session_id}")
+        print(f"🧹 Cleaned up session: {session_id}")
+    if session_id in event_queues:
+        del event_queues[session_id]
+        print(f"🧹 Cleaned up queue: {session_id}")
 
 
 if __name__ == "__main__":

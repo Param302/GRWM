@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import ProfileCard from './ProfileCard';
 import StyleSelector from './StyleSelector';
 import LoadingPanel from './LoadingPanel';
@@ -58,14 +58,24 @@ export default function GenerationFlow({ username, tone, onBack }: GenerationFlo
     const [finalMarkdown, setFinalMarkdown] = useState('');
     const [selectedStyle, setSelectedStyle] = useState('professional');
     const [currentStage, setCurrentStage] = useState('');
-    const [hasStarted, setHasStarted] = useState(false);
+    const hasStartedRef = useRef(false);
+    const eventSourceRef = useRef<EventSource | null>(null);
 
     useEffect(() => {
         // Prevent double execution in React strict mode
-        if (!hasStarted) {
-            setHasStarted(true);
+        if (!hasStartedRef.current) {
+            hasStartedRef.current = true;
             startGeneration();
         }
+
+        // Cleanup on unmount
+        return () => {
+            if (eventSourceRef.current) {
+                console.log('🧹 Cleaning up SSE connection');
+                eventSourceRef.current.close();
+                eventSourceRef.current = null;
+            }
+        };
     }, []);
 
     const startGeneration = async () => {
@@ -97,6 +107,7 @@ export default function GenerationFlow({ username, tone, onBack }: GenerationFlo
 
             // Connect to SSE stream
             const eventSource = new EventSource(`${API_URL}/api/stream/${session_id}`);
+            eventSourceRef.current = eventSource;
 
             eventSource.onmessage = (event) => {
                 const data = JSON.parse(event.data);

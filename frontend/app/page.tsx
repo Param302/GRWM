@@ -7,11 +7,9 @@ import GenerationFlow from './components/GenerationFlow';
 export default function Home() {
   const [started, setStarted] = useState(false);
   const [username, setUsername] = useState('');
-  const [tone, setTone] = useState('professional');
 
-  const handleStart = (user: string, selectedTone: string) => {
+  const handleStart = (user: string) => {
     setUsername(user);
-    setTone(selectedTone);
     setStarted(true);
   };
 
@@ -34,7 +32,6 @@ export default function Home() {
           {started && (
             <GenerationFlow
               username={username}
-              tone={tone}
               onBack={() => setStarted(false)}
             />
           )}

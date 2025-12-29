@@ -13,16 +13,27 @@ interface ProfileCardProps {
         following: number;
     };
     analysis: {
-        archetype: string;
-        grind_score: {
+        archetype?: string;
+        profile_headline?: string;
+        grind_score?: {
             score: number;
             label: string;
             emoji: string;
         };
-        primary_language: {
+        top_languages?: Array<{
+            name: string;
+            percentage: number;
+        }>;
+        tech_stack?: string[];
+        primary_language?: {
             name: string;
             percentage: number;
         };
+        key_projects?: Array<{
+            name: string;
+            description: string;
+            stars: number;
+        }>;
     } | null;
 }
 

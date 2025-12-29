@@ -181,14 +181,18 @@ export default function LoadingPanel({
                                         const html2canvas = (await import('html2canvas-pro')).default;
                                         // Capture the entire document body (whole page)
                                         const canvas = await html2canvas(document.body, {
-                                            scale: 0.5,
+                                            scale: 1,
                                             backgroundColor: '#fafafa',
                                             logging: false,
                                             useCORS: true,
                                             allowTaint: true,
+                                            foreignObjectRendering: false,
                                             ignoreElements: (element) => {
-                                                // Skip modal overlays to avoid capturing them
-                                                return element.classList?.contains('fixed');
+                                                // Skip modal overlays, iframes, and embedded content to avoid capturing them
+                                                return element.classList?.contains('fixed') ||
+                                                    element.tagName === 'IFRAME' ||
+                                                    element.tagName === 'EMBED' ||
+                                                    element.tagName === 'OBJECT';
                                             }
                                         });
                                         const imgData = canvas.toDataURL('image/png');

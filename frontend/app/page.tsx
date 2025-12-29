@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import UsernameInput from './components/UsernameInput';
 import GenerationFlow from './components/GenerationFlow';
+import PWAInstaller from './components/PWAInstaller';
 
 export default function Home() {
   const [started, setStarted] = useState(false);
@@ -14,29 +15,32 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-[#fafafa] overflow-hidden">
-      <div className="relative w-full h-screen">
-        {/* Username Input Screen */}
-        <div
-          className={`absolute inset-0 transition-transform duration-700 ease-in-out ${started ? '-translate-x-full' : 'translate-x-0'
-            }`}
-        >
-          <UsernameInput onStart={handleStart} />
-        </div>
+    <>
+      <PWAInstaller />
+      <div className="min-h-screen bg-[#fafafa] overflow-hidden">
+        <div className="relative w-full h-screen">
+          {/* Username Input Screen */}
+          <div
+            className={`absolute inset-0 transition-transform duration-700 ease-in-out ${started ? '-translate-x-full' : 'translate-x-0'
+              }`}
+          >
+            <UsernameInput onStart={handleStart} />
+          </div>
 
-        {/* Generation Flow Screen */}
-        <div
-          className={`absolute inset-0 transition-transform duration-700 ease-in-out ${started ? 'translate-x-0' : 'translate-x-full'
-            }`}
-        >
-          {started && (
-            <GenerationFlow
-              username={username}
-              onBack={() => setStarted(false)}
-            />
-          )}
+          {/* Generation Flow Screen */}
+          <div
+            className={`absolute inset-0 transition-transform duration-700 ease-in-out ${started ? 'translate-x-0' : 'translate-x-full'
+              }`}
+          >
+            {started && (
+              <GenerationFlow
+                username={username}
+                onBack={() => setStarted(false)}
+              />
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

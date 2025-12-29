@@ -1,0 +1,61 @@
+{
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "GRWM - Get README With Me",
+    "alternateName": "GRWM",
+    "url": "https://getreadmewithme.vercel.app",
+    "description": "Revolutionary AI Agentic GitHub Portfolio Generator powered by Multi-Agent AI System. 3 specialized AI agents (Detective, CTO, Ghostwriter) work together to create personalized, custom-toned professional README portfolios instantly. Perfect for all GitHub users - from students to senior engineers. Transform your GitHub profile with intelligent AI automation. #AIAgents #MultiAgentAI #AgenticAI #GitHubProfile #READMEGenerator #DeveloperTools",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+    },
+    "creator": {
+        "@type": "Person",
+        "name": "Parampreet Singh",
+        "url": "https://parampreetsingh.me",
+        "email": "connectwithparam.30@gmail.com"
+    },
+    "author": {
+        "@type": "Person",
+        "name": "Parampreet Singh",
+        "url": "https://parampreetsingh.me",
+        "email": "connectwithparam.30@gmail.com"
+    },
+    "image": "https://getreadmewithme.vercel.app/og-image.png",
+    "screenshot": "https://getreadmewithme.vercel.app/screenshot-desktop.png",
+    "featureList": [
+        "AI Agentic Multi-Agent System",
+        "3 Specialized AI Agents: Detective (Profile Analysis), CTO (Tech Stack Analysis), Ghostwriter (Content Creation)",
+        "Custom-Toned Portfolio Generation",
+        "4 Professional Style Options: Professional, Creative, Minimal, Detailed",
+        "Real-time Live Generation with Progress Tracking",
+        "Personalized Developer Profiles",
+        "Custom Portfolio Descriptions",
+        "Automated GitHub Profile Analysis",
+        "Intelligent Tech Stack Recognition",
+        "Multi-Language Support",
+        "Instant Download & Copy",
+        "Social Media Sharing",
+        "Dark/Light Mode Preview",
+        "Responsive Design for All Devices"
+    ],
+    "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "5",
+        "ratingCount": "1",
+        "bestRating": "5",
+        "worstRating": "1"
+    },
+    "keywords": "AI Agentic system, Multi-Agent AI, AI agents collaboration, GitHub portfolio generator, custom toned README, AI README maker, GitHub profile maker, developer portfolio, automated README, professional GitHub profile, AI-powered GitHub, agentic workflow, multi-agent system, GitHub users, developer tools, #AIAgents #MultiAgentAI #AgenticAI #GitHubProfile #READMEGenerator #DeveloperTools #AIAutomation #GitHubPortfolio",
+    "audience": {
+        "@type": "Audience",
+        "audienceType": "GitHub Users, Software Developers, Software Engineers, Web Developers, Data Scientists, DevOps Engineers, Students, Tech Professionals"
+    },
+    "targetProduct": {
+        "@type": "Product",
+        "name": "GitHub README Portfolio"
+    }
+}

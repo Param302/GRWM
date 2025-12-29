@@ -1,0 +1,56 @@
+{
+    "name": "GRWM - Get README With Me | AI Agentic Portfolio Generator",
+    "short_name": "GRWM",
+    "description": "Revolutionary AI Agentic GitHub Portfolio Generator. Multi-Agent AI system with 3 specialized agents creating custom-toned professional README portfolios for every GitHub user. #AIAgents #MultiAgentAI #GitHubProfile",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#fafafa",
+    "theme_color": "#000000",
+    "orientation": "portrait-primary",
+    "icons": [
+        {
+            "src": "/icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any maskable"
+        }
+    ],
+    "categories": ["productivity", "utilities", "developer tools"],
+    "shortcuts": [
+        {
+            "name": "Generate README",
+            "short_name": "Generate",
+            "description": "Start generating your AI-powered GitHub README",
+            "url": "/",
+            "icons": [
+                {
+                    "src": "/icon-192.png",
+                    "sizes": "192x192"
+                }
+            ]
+        }
+    ],
+    "screenshots": [
+        {
+            "src": "/screenshot-mobile.png",
+            "sizes": "540x720",
+            "type": "image/png",
+            "form_factor": "narrow"
+        },
+        {
+            "src": "/screenshot-desktop.png",
+            "sizes": "1920x1080",
+            "type": "image/png",
+            "form_factor": "wide"
+        }
+    ],
+    "lang": "en",
+    "dir": "ltr",
+    "iarc_rating_id": "e84b072d-71b3-4d3e-86ae-31a8ce4e53b7"
+}

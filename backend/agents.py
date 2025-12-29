@@ -1347,6 +1347,16 @@ WHAT TO AVOID:
         Post-process generated markdown to ensure quality
         Add missing elements if needed
         """
+        # Remove markdown code block wrapper if present (Gemini sometimes adds this)
+        markdown = markdown.strip()
+        if markdown.startswith("```markdown"):
+            markdown = markdown[len("```markdown"):].strip()
+        elif markdown.startswith("```"):
+            markdown = markdown[3:].strip()
+
+        if markdown.endswith("```"):
+            markdown = markdown[:-3].strip()
+
         # Ensure github-readme-stats is included
         if "github-readme-stats" not in markdown:
             stats_section = f"""

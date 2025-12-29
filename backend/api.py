@@ -25,7 +25,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",  # Local development
-        "https://*.vercel.app",   # Vercel deployments
+        "https://getreadmewithme.vercel.app/",  # Production
     ],
     allow_credentials=True,
     allow_methods=["*"],

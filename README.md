@@ -666,44 +666,6 @@ npm run lint
 
 ---
 
-## 🚀 Deployment
-
-### Frontend (Vercel)
-
-```bash
-# Install Vercel CLI
-npm i -g vercel
-
-# Deploy
-cd frontend
-vercel
-```
-
-### Backend (Railway/Render/Fly.io)
-
-```bash
-# Example: Railway
-railway login
-railway init
-railway up
-```
-
-### Environment Variables
-
-**Backend (.env):**
-```env
-GITHUB_PAT=ghp_xxxxxxxxxxxxx
-GEMINI_API_KEY=AIxxxxxxxxxxxx
-PORT=8000
-```
-
-**Frontend (.env.local):**
-```env
-NEXT_PUBLIC_API_URL=https://your-backend-url.com
-```
-
----
-
 ## 🎨 Customization
 
 <details>

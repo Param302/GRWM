@@ -1,5 +1,5 @@
 """
-GRWM - GitHub README Writer Maestro
+GRWM - GitHub README With Me
 Agentic AI system to generate awesome GitHub profile READMEs
 """
 
@@ -847,7 +847,7 @@ class GitHubProfileAnalyzer:
 def main():
     """Comprehensive test of all GitHub Profile Analyzer tools"""
     print("=" * 70)
-    print("🚀 GRWM - GitHub README Writer Maestro")
+    print("🚀 GRWM - GitHub README With Me")
     print("   Testing All Tools & Components")
     print("=" * 70)
 

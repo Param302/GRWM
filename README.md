@@ -386,6 +386,7 @@ eventSource.onmessage = (event) => {
 # Navigate to backend directory
 cd backend
 # download uv first
+# pip install uv
 uv sync
 
 # Activate virtual env

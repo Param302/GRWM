@@ -11,21 +11,29 @@ from typing import Dict, Optional, AsyncGenerator
 from datetime import datetime
 from asyncio import Queue
 
-from fastapi import FastAPI, BackgroundTasks, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Request
+from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from agents import create_detective_graph, create_initial_state
 
+# Initialize rate limiter
+limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="GRWM API", version="1.0.0")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS Configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",  # Local development
-        "https://getreadmewithme.vercel.app/",  # Production
+        # Production (removed trailing slash)
+        "https://getreadmewithme.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -85,7 +93,8 @@ class GenerateRequest(BaseModel):
 
 
 @app.get("/")
-async def root():
+@limiter.limit("100/minute")
+async def root(request: Request):
     return {
         "service": "GRWM API",
         "status": "running",
@@ -94,7 +103,8 @@ async def root():
 
 
 @app.get("/api/health")
-async def health_check():
+@limiter.limit("60/minute")
+async def health_check(request: Request):
     return {
         "status": "healthy",
         "active_sessions": len(active_sessions),
@@ -103,7 +113,8 @@ async def health_check():
 
 
 @app.post("/api/cleanup/{session_id}")
-async def cleanup_connection(session_id: str):
+@limiter.limit("20/minute")
+async def cleanup_connection(session_id: str, request: Request):
     """
     Client notifies server to cleanup SSE connection
     Called when user navigates away or closes browser
@@ -133,7 +144,8 @@ async def cleanup_connection(session_id: str):
 
 
 @app.post("/api/extend-timeout/{session_id}")
-async def extend_timeout(session_id: str):
+@limiter.limit("20/minute")
+async def extend_timeout(session_id: str, request: Request):
     """
     Client notifies server that user made a selection
     Extends timeout from 1 minute to 5 minutes
@@ -153,15 +165,17 @@ async def extend_timeout(session_id: str):
 
 
 @app.post("/api/select-style")
-async def select_style(request: dict, background_tasks: BackgroundTasks):
+@limiter.limit("10/minute")
+async def select_style(style_dict: dict, request: Request, background_tasks: BackgroundTasks):
     """
     User selects a README style after CTO analysis
     Optionally includes custom description/requirements
     This triggers the Ghostwriter agent to start
     """
-    session_id = request.get("session_id")
-    style = request.get("style")
-    description = request.get("description", "")  # Optional user description
+    session_id = style_dict.get("session_id")
+    style = style_dict.get("style")
+    # Optional user description
+    description = style_dict.get("description", "")
 
     if not session_id or not style:
         raise HTTPException(
@@ -210,7 +224,8 @@ async def select_style(request: dict, background_tasks: BackgroundTasks):
 
 
 @app.post("/api/generate")
-async def start_generation(request: GenerateRequest, background_tasks: BackgroundTasks):
+@limiter.limit("5/minute")  # Strict limit - most resource-intensive endpoint
+async def start_generation(gen_request: GenerateRequest, request: Request, background_tasks: BackgroundTasks):
     """
     Start README generation and return session_id
     Client uses this to connect to SSE endpoint
@@ -218,19 +233,19 @@ async def start_generation(request: GenerateRequest, background_tasks: Backgroun
     session_id = str(uuid.uuid4())
     print(f"\n{'='*60}")
     print(
-        f"🚀 NEW REQUEST: Username='{request.username}', Tone='{request.tone}'")
+        f"🚀 NEW REQUEST: Username='{gen_request.username}', Tone='{gen_request.tone}'")
     print(f"📋 Session ID: {session_id}")
     print(f"{'='*60}\n")
 
     # Initialize session
     active_sessions[session_id] = {
         "status": "starting",
-        "username": request.username,
+        "username": gen_request.username,
         "events": [],
         "created_at": datetime.now().isoformat(),
         "preferences": {
-            "tone": request.tone,
-            "style": request.style
+            "tone": gen_request.tone,
+            "style": gen_request.style
         }
     }
 
@@ -244,9 +259,9 @@ async def start_generation(request: GenerateRequest, background_tasks: Backgroun
     background_tasks.add_task(
         run_agent,
         session_id,
-        request.username,
-        request.tone,
-        request.style
+        gen_request.username,
+        gen_request.tone,
+        gen_request.style
     )
     print(f"✅ Background task queued\n")
 
@@ -681,7 +696,8 @@ def transform_event(event_name: str, state: Dict, username: str) -> Optional[Dic
 
 
 @app.get("/api/stream/{session_id}")
-async def stream_events(session_id: str):
+@limiter.limit("10/minute")
+async def stream_events(session_id: str, request: Request):
     """
     Server-Sent Events (SSE) endpoint
     Streams agent events to frontend in real-time

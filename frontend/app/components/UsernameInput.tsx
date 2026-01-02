@@ -111,6 +111,22 @@ export default function UsernameInput({ onStart }: UsernameInputProps) {
                         <p className="mt-1 text-xs font-mono text-black/70">Watch AI agents work live</p>
                     </div>
                 </div>
+
+                {/* Buy Me A Chai Button */}
+                <div className="mt-8 flex justify-center">
+                    <a
+                        href="https://buymeachai.ezee.li/param302"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-block border-4 border-black bg-white hover:bg-[#ffe66d] transition-all shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 p-2"
+                    >
+                        <img
+                            src="https://buymeachai.ezee.li/assets/images/buymeachai-button.png"
+                            alt="Buy Me A Chai"
+                            className="w-40 sm:w-48 md:w-52 h-auto block"
+                        />
+                    </a>
+                </div>
             </div>
         </div>
     );

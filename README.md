@@ -385,13 +385,11 @@ eventSource.onmessage = (event) => {
 ```bash
 # Navigate to backend directory
 cd backend
+# download uv first
+uv sync
 
-# Create virtual environment
-python -m venv venv
+# Activate virtual env
 source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
 
 # Create .env file
 cat > .env << EOL
@@ -400,7 +398,7 @@ GEMINI_API_KEY=your_gemini_api_key_here
 EOL
 
 # Run the server
-uvicorn api:app --host 0.0.0.0 --port 8000 --reload
+python api.py
 ```
 
 ### Frontend Setup
@@ -419,17 +417,6 @@ EOL
 
 # Run development server
 npm run dev
-```
-
-### Production Build
-
-```bash
-# Frontend
-npm run build
-npm start
-
-# Backend (use gunicorn or uvicorn in production)
-gunicorn api:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
 ```
 
 ---

@@ -6,7 +6,6 @@ Uses LangGraph with modern patterns: conditional routing, parallel execution, ch
 import os
 import asyncio
 from typing import TypedDict, Annotated, Optional, List, Dict, Any
-from operator import add
 from concurrent.futures import ThreadPoolExecutor
 import threading
 
@@ -34,7 +33,64 @@ from main import (
 load_dotenv()
 
 GITHUB_TOKEN = os.getenv("GITHUB_PAT")
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+
+# ============================================================
+# API KEY ROTATION SYSTEM - Round Robin Load Distribution
+# ============================================================
+
+
+class APIKeyRotator:
+    """
+    Rotates through multiple Gemini API keys in round-robin fashion
+    to distribute API quota usage across multiple keys
+    """
+
+    def __init__(self):
+        # Load all API keys from environment
+        self.api_keys = [
+            os.getenv("GOOGLE_API_KEY_1"),
+            os.getenv("GOOGLE_API_KEY_2"),
+            os.getenv("GOOGLE_API_KEY_3"),
+        ]
+
+        # Filter out None values (in case not all keys are set)
+        self.api_keys = [key for key in self.api_keys if key]
+
+        # Fallback to single key if multiple keys not configured
+        if not self.api_keys:
+            single_key = os.getenv("GOOGLE_API_KEY")
+            if single_key:
+                self.api_keys = [single_key]
+
+        if not self.api_keys:
+            raise ValueError(
+                "No Google API keys found. Set GOOGLE_API_KEY_1, GOOGLE_API_KEY_2, GOOGLE_API_KEY_3 or GOOGLE_API_KEY")
+
+        self.current_index = 0
+        self._lock = threading.Lock()
+
+        print(
+            f"🔑 API Key Rotator initialized with {len(self.api_keys)} key(s)")
+
+    def get_next_key(self) -> str:
+        """Get the next API key in rotation (thread-safe)"""
+        with self._lock:
+            key = self.api_keys[self.current_index]
+            self.current_index = (self.current_index + 1) % len(self.api_keys)
+            key_num = ((self.current_index - 1) % len(self.api_keys)) + 1
+            print(f"   🔑 Using API Key #{key_num}")
+            return key
+
+    def get_key_count(self) -> int:
+        """Get total number of available API keys"""
+        return len(self.api_keys)
+
+
+# Initialize global rotator
+api_key_rotator = APIKeyRotator()
+
+# Backward compatibility - keep GOOGLE_API_KEY for non-LLM usage
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") or os.getenv("GOOGLE_API_KEY_1")
 
 
 # ============================================================
@@ -76,14 +132,14 @@ class AgentState(TypedDict):
 # ============================================================
 
 def create_llm(temperature: float = 0.7):
-    """Initialize Gemini model"""
-    if not GOOGLE_API_KEY:
-        raise ValueError("GOOGLE_API_KEY not found in environment variables")
+    """Initialize Gemini model with rotating API key"""
+    # Get next API key in rotation
+    api_key = api_key_rotator.get_next_key()
 
     return ChatGoogleGenerativeAI(
         model="gemini-2.5-flash",  # Latest free model (Dec 2025)
         temperature=temperature,
-        google_api_key=GOOGLE_API_KEY,
+        google_api_key=api_key,
     )
 
 
@@ -980,15 +1036,14 @@ class GhostwriterAgent:
 
     def __init__(self):
         """Initialize Ghostwriter with LLM for creative generation"""
-        if not GOOGLE_API_KEY:
-            raise ValueError(
-                "GOOGLE_API_KEY not found in environment variables")
+        # Get next API key in rotation
+        api_key = api_key_rotator.get_next_key()
 
         # Higher temperature for creative writing
         self.llm = ChatGoogleGenerativeAI(
             model="gemini-2.5-flash",
             temperature=0.7,
-            google_api_key=GOOGLE_API_KEY,
+            google_api_key=api_key,
         )
 
     def __call__(self, state: AgentState) -> AgentState:

@@ -102,6 +102,56 @@ async def health_check():
     }
 
 
+@app.post("/api/cleanup/{session_id}")
+async def cleanup_connection(session_id: str):
+    """
+    Client notifies server to cleanup SSE connection
+    Called when user navigates away or closes browser
+    """
+    print(f"🧹 Client requested cleanup for session: {session_id}")
+
+    if session_id in active_sessions:
+        active_sessions[session_id]["status"] = "client_closed"
+        print(f"   └─ Session marked as client_closed")
+
+    if session_id in event_queues:
+        # Put a close event in the queue to end the stream
+        try:
+            await event_queues[session_id].put({
+                "type": "client_closed",
+                "message": "Client disconnected",
+                "timestamp": datetime.now().isoformat()
+            })
+            print(f"   └─ Close event queued")
+        except Exception as e:
+            print(f"   └─ Error queuing close event: {e}")
+
+    # Immediate cleanup
+    asyncio.create_task(cleanup_session(session_id, delay=5))
+
+    return {"status": "cleanup_initiated", "session_id": session_id}
+
+
+@app.post("/api/extend-timeout/{session_id}")
+async def extend_timeout(session_id: str):
+    """
+    Client notifies server that user made a selection
+    Extends timeout from 1 minute to 5 minutes
+    """
+    print(f"⏰ Client requested timeout extension for session: {session_id}")
+
+    if session_id not in active_sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Mark that user has selected and timeout should be extended
+    active_sessions[session_id]["timeout_extended"] = True
+    active_sessions[session_id]["extended_at"] = datetime.now().isoformat()
+
+    print(f"   └─ Timeout extended to 5 minutes for session {session_id}")
+
+    return {"status": "timeout_extended", "session_id": session_id}
+
+
 @app.post("/api/select-style")
 async def select_style(request: dict, background_tasks: BackgroundTasks):
     """
@@ -129,6 +179,13 @@ async def select_style(request: dict, background_tasks: BackgroundTasks):
     active_sessions[session_id]["preferences"]["style"] = style
     active_sessions[session_id]["preferences"]["description"] = description
     active_sessions[session_id]["style_selected"] = True
+
+    # Check if this is the first trigger - if so, extend timeout
+    if not active_sessions[session_id].get("timeout_extended"):
+        active_sessions[session_id]["timeout_extended"] = True
+        active_sessions[session_id]["extended_at"] = datetime.now().isoformat()
+        print(
+            f"⏰ First selection - timeout extended to 5 minutes for {session_id}")
 
     print(f"🎨 Style selected for session {session_id}: {style}")
 
@@ -664,25 +721,47 @@ async def stream_events(session_id: str):
 
         # Stream events from queue in real-time
         keepalive_count = 0
-        max_keepalives = 1  # Allow only 1 keepalive (60 seconds)
+        # Initial timeout: 1 minute (can be extended to 5 minutes)
+        max_keepalives = 1  # 1 minute initially
+        timeout_extended = False
 
         try:
             while True:
+                # Check if session status is client_closed
+                if session_id in active_sessions and active_sessions[session_id].get("status") == "client_closed":
+                    print(f"🛑 Client closed, ending stream for {session_id}")
+                    break
+
+                # Check if timeout should be extended (user made a selection)
+                if not timeout_extended and session_id in active_sessions:
+                    if active_sessions[session_id].get("timeout_extended"):
+                        max_keepalives = 5  # Extend to 5 minutes
+                        timeout_extended = True
+                        print(
+                            f"⏰ Timeout extended to 5 minutes for {session_id}")
+
                 # Wait for next event from queue with timeout
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=60.0)
                     print(
                         f"📤 Sending event to client: {event.get('type', 'unknown')}")
+
+                    # Handle client_closed event
+                    if event.get("type") == "client_closed":
+                        print(f"🛑 Client closed event received, ending stream")
+                        break
+
                     yield f"data: {json.dumps(event)}\n\n"
 
                     # Reset keepalive counter when we get an event
                     keepalive_count = 0
 
                     # Check if this is a completion event
-                    if event.get("type") == "complete" or event.get("type") == "error":
+                    if event.get("type") == "complete" or event.get("type") == "error" or event.get("type") == "done":
                         print(
                             f"🏁 Stream ending due to {event.get('type')} event")
-                        yield f"data: {json.dumps({'type': 'done', 'status': event.get('type')})}\n\n"
+                        if event.get("type") != "done":
+                            yield f"data: {json.dumps({'type': 'done', 'status': event.get('type')})}\n\n"
 
                         # Cleanup session after 5 minutes
                         asyncio.create_task(
@@ -691,12 +770,14 @@ async def stream_events(session_id: str):
 
                 except asyncio.TimeoutError:
                     keepalive_count += 1
+                    current_max = max_keepalives
                     print(
-                        f"💓 Sent keepalive ({keepalive_count}/{max_keepalives})")
+                        f"💓 Sent keepalive ({keepalive_count}/{current_max})")
 
-                    if keepalive_count > max_keepalives:
+                    if keepalive_count > current_max:
                         # Timeout exceeded - close connection
-                        print(f"⏰ Max keepalives exceeded, closing connection")
+                        print(
+                            f"⏰ Max keepalives exceeded ({current_max} min), closing connection")
                         timeout_event = {
                             'type': 'timeout',
                             'message': 'Ghostwriter is exhausted! Please try again.',

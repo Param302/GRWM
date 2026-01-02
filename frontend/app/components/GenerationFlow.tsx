@@ -65,9 +65,38 @@ export default function GenerationFlow({ username, onBack }: GenerationFlowProps
     const [sessionId, setSessionId] = useState<string>('');
     const [showTimeoutModal, setShowTimeoutModal] = useState(false);
     const [showErrorModal, setShowErrorModal] = useState(false);
+    const [showConnectionLostModal, setShowConnectionLostModal] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
+    const [firstSelectionMade, setFirstSelectionMade] = useState(false);
     const hasStartedRef = useRef(false);
     const eventSourceRef = useRef<EventSource | null>(null);
+    const cleanupCalledRef = useRef(false);
+
+    // Cleanup function to notify server
+    const cleanupConnection = async () => {
+        if (cleanupCalledRef.current) return;
+        cleanupCalledRef.current = true;
+
+        if (sessionId && eventSourceRef.current) {
+            console.log('🧹 Cleaning up SSE connection and notifying server');
+
+            // Close EventSource
+            eventSourceRef.current.close();
+            eventSourceRef.current = null;
+
+            // Notify server to cleanup
+            try {
+                const API_URL = process.env.NEXT_PUBLIC_API_URL;
+                await fetch(`${API_URL}/api/cleanup/${sessionId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                console.log('✅ Server notified of cleanup');
+            } catch (error) {
+                console.error('❌ Failed to notify server:', error);
+            }
+        }
+    };
 
     // Utility function to convert image URL to base64
     const imageUrlToBase64 = async (url: string): Promise<string> => {
@@ -93,15 +122,29 @@ export default function GenerationFlow({ username, onBack }: GenerationFlowProps
             startGeneration();
         }
 
-        // Cleanup on unmount
-        return () => {
-            if (eventSourceRef.current) {
-                console.log('🧹 Cleaning up SSE connection');
-                eventSourceRef.current.close();
-                eventSourceRef.current = null;
+        // Handle page navigation/reload
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            cleanupConnection();
+        };
+
+        const handleVisibilityChange = () => {
+            if (document.hidden && eventSourceRef.current) {
+                // Page is being hidden/closed
+                cleanupConnection();
             }
         };
-    }, []);
+
+        // Add event listeners
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        // Cleanup on unmount
+        return () => {
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            cleanupConnection();
+        };
+    }, [sessionId]);
 
     const startGeneration = async () => {
         const API_URL = process.env.NEXT_PUBLIC_API_URL;
@@ -198,6 +241,13 @@ export default function GenerationFlow({ username, onBack }: GenerationFlowProps
 
             eventSource.onerror = (error) => {
                 console.error('❌ SSE connection error:', error);
+
+                // Connection lost - show modal
+                if (eventSource.readyState === EventSource.CLOSED) {
+                    console.log('🔌 Connection closed unexpectedly');
+                    setShowConnectionLostModal(true);
+                }
+
                 eventSource.close();
                 setLoading(false);
                 setEvents(prev => [...prev, {
@@ -227,6 +277,12 @@ export default function GenerationFlow({ username, onBack }: GenerationFlowProps
             return;
         }
 
+        // Mark first selection to extend timeout
+        if (!firstSelectionMade) {
+            setFirstSelectionMade(true);
+            console.log('⏰ First selection made - timeout will be extended to 5 minutes');
+        }
+
         const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
         try {
@@ -245,7 +301,7 @@ export default function GenerationFlow({ username, onBack }: GenerationFlowProps
                 throw new Error('Failed to submit style selection');
             }
 
-            console.log('✅ Style selection sent to backend');
+            console.log('✅ Style selection sent to backend (timeout extended automatically)');
         } catch (error) {
             console.error('❌ Error submitting style:', error);
         }
@@ -586,6 +642,41 @@ export default function GenerationFlow({ username, onBack }: GenerationFlowProps
                             className="w-full border-4 border-black bg-[#ff6b6b] text-white hover:bg-[#ff5252] font-black px-6 py-3 transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-x-1 hover:translate-y-1 cursor-pointer"
                         >
                             RETRY WITH NEW USERNAME
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Connection Lost Modal - Agent Exhaust */}
+            {showConnectionLostModal && (
+                <div className="fixed inset-0 bg-black/20 backdrop-blur-md flex items-center justify-center z-50 p-4">
+                    <div className="bg-white border-4 border-black p-6 sm:p-8 max-w-md w-full shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] animate-slideIn">
+                        <div className="flex justify-between items-start mb-4">
+                            <h2 className="text-xl sm:text-2xl font-black text-black">Connection Lost! 🔌</h2>
+                            <button
+                                onClick={() => {
+                                    setShowConnectionLostModal(false);
+                                    onBack();
+                                }}
+                                className="text-black hover:text-gray-600 text-2xl font-bold leading-none cursor-pointer"
+                            >
+                                ×
+                            </button>
+                        </div>
+                        <p className="text-black mb-4 font-mono text-xs sm:text-sm">
+                            Our agents got disconnected and couldn't finish the job! This might be due to network issues or server timeout.
+                        </p>
+                        <p className="text-black/60 mb-6 font-mono text-xs">
+                            The agents are exhausted... give them a break and try again! 😴
+                        </p>
+                        <button
+                            onClick={() => {
+                                setShowConnectionLostModal(false);
+                                onBack();
+                            }}
+                            className="w-full border-4 border-black bg-[#4ecdc4] text-white hover:bg-[#3dbdb3] font-black px-6 py-3 transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-x-1 hover:translate-y-1 cursor-pointer"
+                        >
+                            TRY AGAIN
                         </button>
                     </div>
                 </div>

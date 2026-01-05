@@ -29,6 +29,9 @@ from main import (
     SkillExtractor,
 )
 
+# Import tech stack validation
+from tech_stack_badges import is_valid_tech, VALID_TECH_KEYWORDS, generate_tech_stack_badges
+
 # Load environment variables
 load_dotenv()
 
@@ -359,13 +362,16 @@ class CTOAgent:
         """
         print(f"\n🧠 THE CTO: Time to judge... I mean, analyze this developer.")
 
-        repositories = raw_data["repositories"]
-        profile = raw_data["profile"]
-        contributions = raw_data["contributions"]
-        social_proof = raw_data["social_proof"]
+        repositories = raw_data.get("repositories", [])
+        profile = raw_data.get("profile", {})
+        contributions = raw_data.get("contributions", {})
+        social_proof = raw_data.get("social_proof", {})
+
+        # Check if user has no repositories
+        has_repos = repositories and len(repositories) > 0
 
         # 1. Language Analysis with Byte Dominance
-        msg = "📊 Crunching language stats (bytes don't lie)..."
+        msg = "📊 Crunching language stats (bytes don't lie)..." if has_repos else "📊 No repos found - will create sample profile..."
         print(f"  ├─ {msg}")
         if self.progress_callback:
             self.progress_callback("cto", msg)
@@ -456,12 +462,39 @@ class CTOAgent:
     def _analyze_language_dominance(self, repositories: List[Dict]) -> Dict[str, Any]:
         """
         Calculate language dominance by total bytes (not repo count)
+        Filters out Jupyter Notebook as it's a format, not a language
         """
+        # Handle empty repositories
+        if not repositories or len(repositories) == 0:
+            return {
+                "top_5_languages": [],
+                "primary_language": None,
+                "is_specialist": False,
+                "total_languages": 0,
+                "language_diversity_score": 0
+            }
+
         lang_analysis = LanguageAnalyzer.analyze(repositories)
 
-        # Get top languages sorted by percentage
+        # Merge Jupyter Notebook percentage with Python (since Jupyter is essentially Python)
+        jupyter_info = None
+        for lang in ['Jupyter Notebook', 'jupyter notebook', 'Jupyter', 'jupyter']:
+            if lang in lang_analysis["languages"]:
+                jupyter_info = lang_analysis["languages"][lang]
+                break
+        
+        if jupyter_info and "Python" in lang_analysis["languages"]:
+            # Add Jupyter's percentage and bytes to Python
+            lang_analysis["languages"]["Python"]["percentage"] += jupyter_info["percentage"]
+            lang_analysis["languages"]["Python"]["size"] += jupyter_info["size"]
+        
+        # Build top languages list, excluding Jupyter Notebook
         top_languages = []
         for lang, info in lang_analysis["languages"].items():
+            # Skip Jupyter Notebook - already merged with Python
+            if lang.lower() in ['jupyter notebook', 'jupyter']:
+                continue
+
             top_languages.append({
                 "name": lang,
                 "percentage": info["percentage"],
@@ -486,8 +519,21 @@ class CTOAgent:
     def _map_skills_to_domains(self, repositories: List[Dict]) -> Dict[str, Any]:
         """
         Map specific technologies to broader professional domains
+        Validates and filters tech stack to remove non-tech tags
         """
         skills = SkillExtractor.extract(repositories)
+
+        # Filter skills to only include valid tech (removes project-specific tags)
+        valid_skills = [skill for skill in skills["all_skills"]
+                        if is_valid_tech(skill)]
+        valid_frameworks = [
+            fw for fw in skills["frameworks"] if is_valid_tech(fw)]
+        valid_tools = [tool for tool in skills["tools"] if is_valid_tech(tool)]
+
+        # Update skills dict with filtered values
+        skills["all_skills"] = valid_skills
+        skills["frameworks"] = valid_frameworks
+        skills["tools"] = valid_tools
 
         # Domain mapping rules
         domain_keywords = {
@@ -657,6 +703,26 @@ class CTOAgent:
         - 40-60 = Consistent
         - 60+ = Grinder
         """
+        # Handle empty contributions
+        if not contributions or contributions.get("total", 0) == 0:
+            return {
+                "score": 0,
+                "label": "New Account",
+                "emoji": "🌱",
+                "breakdown": {
+                    "base_score": 0,
+                    "streak_multiplier": 0,
+                    "consistency_bonus": 0
+                },
+                "contributing_factors": {
+                    "total_contributions": 0,
+                    "current_streak": 0,
+                    "longest_streak": 0,
+                    "activity_rate": 0,
+                    "days_since_creation": 0
+                }
+            }
+
         contrib_calendar = ContributionCalendar.analyze(contributions)
 
         # Calculate days since account creation
@@ -804,6 +870,10 @@ class CTOAgent:
 
         Complexity Score = Stars * 2 + Forks * 3 + Tech Diversity * 5 + (Has README) * 10
         """
+        # Handle empty repositories
+        if not repositories or len(repositories) == 0:
+            return []
+
         scored_repos = []
 
         for repo in repositories:
@@ -819,11 +889,11 @@ class CTOAgent:
 
             scored_repos.append({
                 "name": repo["name"],
-                "description": repo["description"],
-                "url": repo["url"],
-                "stars": repo["stars"],
-                "forks": repo["forks"],
-                "primary_language": repo["primary_language"],
+                "description": repo.get("description", "No description"),
+                "url": repo.get("url", ""),
+                "stars": repo.get("stars", 0),
+                "forks": repo.get("forks", 0),
+                "primary_language": repo.get("primary_language"),
                 "tech_stack": repo.get("detected_tech_stack", []),
                 "complexity_score": complexity_score,
                 "is_pinned": repo.get("is_pinned", False)
@@ -1150,21 +1220,60 @@ class GhostwriterAgent:
         style = preferences.get("style", "modern")
         user_description = preferences.get("description", "")
 
-        # Extract key data
-        profile = raw_data["profile"]
-        repos = raw_data["repositories"]
-        social_proof = raw_data["social_proof"]
-        archetype = analysis["developer_archetype"]
-        grind_score = analysis["grind_score"]
-        tech_diversity = analysis["tech_diversity"]
-        primary_lang = analysis["language_dominance"]["primary_language"]
-        key_projects = analysis["key_projects"]
+        # Extract key data safely
+        profile = raw_data.get("profile", {})
+        repos = raw_data.get("repositories", [])
+        social_proof = raw_data.get("social_proof", {})
+        contributions = raw_data.get("contributions", {})
+        archetype = analysis.get("developer_archetype", {})
+        grind_score = analysis.get("grind_score", {})
+        tech_diversity = analysis.get("tech_diversity", {})
+        primary_lang = analysis.get(
+            "language_dominance", {}).get("primary_language")
+        key_projects = analysis.get("key_projects", [])
+
+        # Check if user has no repos
+        has_repos = repos and len(repos) > 0
+        has_contributions = contributions and contributions.get("total", 0) > 0
 
         # Build system prompt based on tone and style
         tone_instructions = self._get_tone_instructions(tone)
         style_instructions = self._get_style_instructions(style)
 
-        system_prompt = f"""You are an expert README writer creating a GitHub profile README for {username}.
+        # Different prompt for users with no repos
+        if not has_repos:
+            system_prompt = f"""You are an expert README writer creating a GitHub profile README for {username}.
+
+This user has NO PUBLIC REPOSITORIES yet but wants a professional GitHub profile.
+
+{tone_instructions}
+
+{style_instructions}
+
+CRITICAL RULES:
+1. DO NOT mention lack of repositories negatively
+2. Focus on potential, interests, and learning journey
+3. Use profile bio and details to infer interests and focus areas
+4. Include aspirational content based on bio/location/company info
+5. Add placeholders for future projects
+6. Make it welcoming and growth-oriented
+7. NO MARKDOWN COMMENTS - do not add any HTML comments <!-- --> in the output
+8. Use emojis strategically (not overdone)
+9. SOCIAL LINKS: ONLY include real links if provided in data (email, website, twitter, linkedin). NEVER use placeholder links like example.com, example@gmail.com, linkedin.com/in/example, or twitter.com/username. If no real links exist, omit the Connect section entirely.
+10. All links must be valid and real - no broken or example URLs
+
+STRUCTURE FOR NEW DEVELOPERS:
+- Welcome header with name and tagline (based on bio or aspirational)
+- About section (use bio, interests, learning goals)
+- Current focus / Learning (infer from bio or use general developer growth areas)
+- Skills I'm exploring (based on bio or popular technologies)
+- Future projects section (placeholder with ideas)
+- Connect section (ONLY if real social links/email/website are available - never use placeholders)
+- GitHub Stats placeholder (even with no activity, show the widgets)
+
+"""
+        else:
+            system_prompt = f"""You are an expert README writer creating a GitHub profile README for {username}.
 
 {tone_instructions}
 
@@ -1172,21 +1281,24 @@ class GhostwriterAgent:
 
 CRITICAL RULES:
 1. Use REAL data provided - NO placeholders or made-up content
-2. Include shields.io badges for top languages/frameworks
+2. Tech stack badges will be automatically added - DO NOT manually add shields.io badges
 3. Add github-readme-stats with username: {username}
 4. Highlight top {len(key_projects)} projects with descriptions
 5. Show personality through {tone} tone
-6. Use emojis strategically (not overdone)
-7. Include social proof (stars: {social_proof['total_stars']}, followers: {profile.get('followers', 0)})
-8. Make it visually appealing with proper markdown formatting
+6. NO MARKDOWN COMMENTS - do not add any HTML comments <!-- --> in the output
+7. Use emojis strategically (not overdone)
+8. Include social proof (stars: {social_proof.get('total_stars', 0)}, followers: {profile.get('followers', 0)})
+9. Make it visually appealing with proper markdown formatting
+10. SOCIAL LINKS: ONLY include real links from the data (email, website, twitter, linkedin, social accounts). NEVER use placeholder links like example.com, example@gmail.com, linkedin.com/in/example. If no real contact info exists, omit the Connect section.
+11. All links must be valid and working - verify they exist in the provided data
 
 STRUCTURE:
-- Header with name and tagline (based on archetype: {archetype['full_title']})
-- About section (bio + grind score: {grind_score['label']})
-- Tech Stack section (primary: {primary_lang['name']}, diversity: {tech_diversity['classification']})
+- Header with name and tagline (based on archetype: {archetype.get('full_title', 'Developer')})
+- About section (bio + grind score: {grind_score.get('label', 'Active')})
+- Tech Stack section (primary: {primary_lang.get('name', 'Multiple') if primary_lang else 'Multiple'}, diversity: {tech_diversity.get('classification', 'Developer')})
 - Featured Projects (top {len(key_projects)} repos)
 - GitHub Stats (badges + readme-stats)
-- Connect section (if public data available)
+- Connect section (ONLY if real email/website/twitter/linkedin/social accounts exist in data - never placeholders)
 
 """
 
@@ -1204,8 +1316,42 @@ If requirements conflict with the style, prioritize the user's requests.
         if revision_instructions:
             system_prompt += f"\n\nREVISION REQUEST: {revision_instructions}\nApply this change while keeping all other sections intact."
 
-        # Build data summary for LLM
-        data_summary = f"""
+        # Build data summary - different for no repos vs with repos
+        if not has_repos:
+            # Minimal data for users with no repos
+            data_summary = f"""
+USER DATA:
+- Username: {username}
+- Name: {profile.get('name', username)}
+- Bio: {profile.get('bio', 'Aspiring developer ready to make an impact')}
+- Location: {profile.get('location', 'Unknown')}
+- Company: {profile.get('company', 'N/A')}
+- Followers: {profile.get('followers', 0)}
+- Following: {profile.get('following', 0)}
+- Account Created: {profile.get('created_at', 'N/A')}
+
+CONTACT INFO (use ONLY if not empty/null):
+- Email: {profile.get('email') or 'Not provided'}
+- Website: {profile.get('website') or 'Not provided'}
+- Twitter: {profile.get('twitter') or 'Not provided'}
+- Social Accounts: {len(raw_data.get('social_accounts', []))} linked
+
+CURRENT STATUS:
+- This is a new account or the user hasn't made repos public yet
+- Total Contributions: {contributions.get('total', 0)}
+- {"Focus on creating a welcoming profile that shows potential and learning mindset" if not has_contributions else "They have some contributions - acknowledge their activity"}
+
+SUGGESTION:
+Create an aspirational README that:
+1. Welcomes visitors with enthusiasm
+2. Shows what they're learning or interested in (infer from bio if available)
+3. Includes sections for future projects
+4. Has proper GitHub stats widgets (even if empty, they'll fill up over time)
+5. Provides ways to connect
+"""
+        else:
+            # Full data for users with repos
+            data_summary = f"""
 USER DATA:
 - Username: {username}
 - Name: {profile.get('name', username)}
@@ -1217,50 +1363,63 @@ USER DATA:
 - Public Repos: {profile.get('public_repos', 0)}
 - Created: {profile.get('created_at', 'N/A')}
 
+CONTACT INFO (use ONLY if not empty/null - NEVER use placeholders):
+- Email: {profile.get('email') or 'Not provided'}
+- Website: {profile.get('website') or 'Not provided'}
+- Twitter: {profile.get('twitter') or 'Not provided'}
+- Social Accounts: {', '.join([f"{acc.get('provider')}: {acc.get('url')}" for acc in raw_data.get('social_accounts', [])]) if raw_data.get('social_accounts') else 'None'}
+
 DEVELOPER ARCHETYPE:
-- Title: {archetype['full_title']}
-- Primary: {archetype['primary']}
-- Secondary: {archetype['secondary']}
-- Confidence: {archetype['confidence']}
+- Title: {archetype.get('full_title', 'Developer')}
+- Primary: {archetype.get('primary', 'Developer')}
+- Secondary: {archetype.get('secondary', 'Engineer')}
+- Confidence: {archetype.get('confidence', 'medium')}
 
 GRIND SCORE:
-- Score: {grind_score['score']}
-- Label: {grind_score['label']}
-- Emoji: {grind_score['emoji']}
+- Score: {grind_score.get('score', 0)}
+- Label: {grind_score.get('label', 'Active')}
+- Emoji: {grind_score.get('emoji', '🌱')}
 
 SOCIAL PROOF:
-- Total Stars: {social_proof['total_stars']}
-- Total Forks: {social_proof['total_forks']}
-- Average Stars: {social_proof['average_stars_per_repo']}
-- Most Starred: {social_proof['most_starred_repo']['name']} ({social_proof['most_starred_repo']['stars']} ⭐)
+- Total Stars: {social_proof.get('total_stars', 0)}
+- Total Forks: {social_proof.get('total_forks', 0)}
+- Average Stars: {social_proof.get('average_stars_per_repo', 0)}
+- Most Starred: {social_proof.get('most_starred_repo', {}).get('name', 'N/A')} ({social_proof.get('most_starred_repo', {}).get('stars', 0)} ⭐)
 
 TECH STACK:
-- Primary Language: {primary_lang['name']} ({primary_lang['percentage']}%)
-- Total Languages: {analysis['language_dominance']['total_languages']}
-- Tech Diversity: {tech_diversity['classification']}
-- All Skills: {', '.join(analysis['skill_domains']['all_skills'][:20])}
+- Primary Language: {primary_lang.get('name', 'Multiple') if primary_lang else 'Multiple'} ({primary_lang.get('percentage', 0) if primary_lang else 0}%)
+- Total Languages: {analysis.get('language_dominance', {}).get('total_languages', 0)}
+- Tech Diversity: {tech_diversity.get('classification', 'Developer')}
+- All Skills: {', '.join(analysis.get('skill_domains', {}).get('all_skills', [])[:20])}
 
 TOP PROJECTS:
 """
-        for i, project in enumerate(key_projects[:5], 1):
-            data_summary += f"\n{i}. {project['name']} ({project['stars']} ⭐, {project['forks']} 🍴)"
-            data_summary += f"\n   - Description: {project.get('description', 'No description')}"
-            data_summary += f"\n   - Languages: {', '.join(project.get('languages', ['Unknown']))}"
-            data_summary += f"\n   - URL: https://github.com/{username}/{project['name']}"
+            for i, project in enumerate(key_projects[:5], 1):
+                data_summary += f"\n{i}. {project['name']} ({project.get('stars', 0)} ⭐, {project.get('forks', 0)} 🍴)"
+                data_summary += f"\n   - Description: {project.get('description', 'No description')}"
+                langs = project.get('tech_stack', [])
+                if langs:
+                    data_summary += f"\n   - Tech: {', '.join(langs[:5])}"
+                data_summary += f"\n   - URL: https://github.com/{username}/{project['name']}"
 
         # Generate with LLM
         messages = [
             SystemMessage(content=system_prompt),
             HumanMessage(content=data_summary +
-                         "\n\nGenerate a complete, beautiful GitHub README.md in markdown format.")
+                         "\n\nGenerate a complete, beautiful GitHub README.md in markdown format. DO NOT include any HTML comments in the output.")
         ]
 
         response = self.llm.invoke(messages)
         markdown = response.content
 
         # Post-process: ensure it has proper structure
+        primary_lang_name = primary_lang.get(
+            'name', 'Code') if primary_lang else 'Code'
+        # Get tech stack for badge generation
+        tech_stack_list = analysis.get(
+            'skill_domains', {}).get('all_skills', [])
         markdown = self._post_process_markdown(
-            markdown, username, primary_lang['name'])
+            markdown, username, primary_lang_name, has_repos, tech_stack_list)
 
         return markdown
 
@@ -1397,10 +1556,12 @@ WHAT TO AVOID:
         }
         return instructions.get(style, instructions["professional"])
 
-    def _post_process_markdown(self, markdown: str, username: str, primary_lang: str) -> str:
+    def _post_process_markdown(self, markdown: str, username: str, primary_lang: str, has_repos: bool = True, tech_stack: list = None) -> str:
         """
         Post-process generated markdown to ensure quality
         Add missing elements if needed
+        Remove HTML comments
+        Add proper shields.io badges for tech stack
         """
         # Remove markdown code block wrapper if present (Gemini sometimes adds this)
         markdown = markdown.strip()
@@ -1412,6 +1573,29 @@ WHAT TO AVOID:
         if markdown.endswith("```"):
             markdown = markdown[:-3].strip()
 
+        # Remove ALL HTML comments from the markdown
+        import re
+        markdown = re.sub(r'<!--.*?-->', '', markdown, flags=re.DOTALL)
+
+        # Remove multiple consecutive blank lines (caused by comment removal)
+        markdown = re.sub(r'\n{3,}', '\n\n', markdown)
+
+        # Add tech stack badges if available and has repos
+        if has_repos and tech_stack:
+            tech_badges = generate_tech_stack_badges(tech_stack)
+            if tech_badges:
+                # Try to insert after the header/intro section
+                lines = markdown.split('\n')
+                # Find a good insertion point (after first few lines, before projects)
+                insert_idx = min(5, len(lines))
+                for i, line in enumerate(lines[:15]):
+                    if '## ' in line and ('project' in line.lower() or 'work' in line.lower()):
+                        insert_idx = i
+                        break
+
+                lines.insert(insert_idx, tech_badges)
+                markdown = '\n'.join(lines)
+
         # Ensure github-readme-stats is included
         if "github-readme-stats" not in markdown:
             stats_section = f"""
@@ -1422,15 +1606,6 @@ WHAT TO AVOID:
 ![Top Languages](https://github-readme-stats.vercel.app/api/top-langs/?username={username}&layout=compact&theme=radical)
 """
             markdown += "\n" + stats_section
-
-        # Ensure shields.io badge for primary language
-        if "shields.io" not in markdown and primary_lang:
-            badge = f"![{primary_lang}](https://img.shields.io/badge/-{primary_lang}-blue?style=flat-square&logo={primary_lang.lower()})"
-            # Try to add after header
-            lines = markdown.split("\n")
-            if len(lines) > 2:
-                lines.insert(2, f"\n{badge}\n")
-                markdown = "\n".join(lines)
 
         return markdown.strip()
 

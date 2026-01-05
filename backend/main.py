@@ -340,11 +340,18 @@ class ExReadme:
                 {"owner": username, "name": username}
             )
 
-            if data["repository"] and data["repository"]["object"]:
+            # Handle case where repository doesn't exist
+            if data and data.get("repository") and data["repository"].get("object"):
                 return data["repository"]["object"]["text"]
             return None
         except Exception as e:
-            print(f"Could not fetch existing README: {e}")
+            # Gracefully handle GraphQL NOT_FOUND errors and other exceptions
+            error_str = str(e)
+            if "NOT_FOUND" in error_str or "Could not resolve to a Repository" in error_str:
+                print(
+                    f"Profile repository {username}/{username} does not exist (this is normal)")
+            else:
+                print(f"Could not fetch existing README: {e}")
             return None
 
 

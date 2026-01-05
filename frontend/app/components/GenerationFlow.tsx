@@ -221,16 +221,30 @@ export default function GenerationFlow({ username, onBack }: GenerationFlowProps
                     eventSource.close();
                     setLoading(false);
 
-                    // Check if it's a detective/username error
+                    // Format error message for user
+                    let userErrorMessage = data.message || 'An error occurred during generation';
+
+                    // Check for specific error types
                     if (data.message && (
                         data.message.includes('Failed to fetch data for @') ||
                         data.message.includes('User not found') ||
                         data.message.includes('404') ||
                         data.stage === 'detective'
                     )) {
-                        setErrorMessage(data.message);
-                        setShowErrorModal(true);
+                        userErrorMessage = `Could not find GitHub user "${username}". Please check the username and try again.`;
+                    } else if (data.message && data.message.includes('NoneType')) {
+                        // Handle the NoneType error specifically
+                        userErrorMessage = 'Unable to process your profile data. This might be because you have no public repositories. Please try again or contact support.';
+                    } else if (data.message && data.message.includes('NOT_FOUND')) {
+                        // Profile repo doesn't exist - this is actually normal
+                        userErrorMessage = 'Processing your profile... (Note: You don\'t have a profile repository yet, which is normal)';
+                        // Don't show error modal for this case, just log it
+                        console.log('ℹ️ User has no profile repo - continuing normally');
+                        return; // Don't treat this as an error
                     }
+
+                    setErrorMessage(userErrorMessage);
+                    setShowErrorModal(true);
                 } else if (data.type === 'timeout') {
                     console.error('⏰ Timeout event:', data.message);
                     eventSource.close();

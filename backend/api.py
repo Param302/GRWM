@@ -31,7 +31,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        # "http://localhost:3000",  # Local development
+        "http://localhost:3000",  # Local development
         # Production (removed trailing slash)
         "https://getreadmewithme.vercel.app",
     ],
